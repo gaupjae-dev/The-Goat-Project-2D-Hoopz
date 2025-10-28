@@ -14,7 +14,7 @@ import {
     getDoc, 
     onSnapshot, 
     collection, 
-    query 
+    setLogLevel
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 // --- GLOBAL FIREBASE & GAME STATE ---
@@ -70,6 +70,9 @@ let currentDrag = { x: 0, y: 0 };
  */
 async function initApp() {
     try {
+        // Set Firebase logging level to Debug for visibility
+        setLogLevel('debug');
+
         app = initializeApp(firebaseConfig);
         db = getFirestore(app);
         auth = getAuth(app);
@@ -79,8 +82,10 @@ async function initApp() {
 
         // Sign in using the custom token if provided, otherwise sign in anonymously
         if (initialAuthToken) {
+            console.log("Attempting sign-in with custom token.");
             await signInWithCustomToken(auth, initialAuthToken);
         } else {
+            console.log("Attempting anonymous sign-in.");
             await signInAnonymously(auth);
         }
 
@@ -94,20 +99,21 @@ async function initApp() {
                 // Set up real-time listener for player data
                 setupDataListener();
             } else {
-                // Should not happen with anonymous auth, but good practice
                 console.log("No user signed in. Using default ID.");
                 userId = 'guest-' + crypto.randomUUID(); 
                 isAuthReady = true;
-                // Still update UI with initial data
                 updateUI();
             }
+            // Ensure the UI is shown only after auth is ready
+            showMainMenu();
         });
 
     } catch (e) {
         console.error("Firebase Initialization Error:", e);
-        // Fallback for UI even if Firebase fails
         isAuthReady = true;
+        userId = 'guest-fail';
         updateUI();
+        showMainMenu();
     }
 }
 
@@ -117,7 +123,7 @@ async function initApp() {
  * Constructs the Firestore path for the player's private data.
  */
 function getPlayerDocRef() {
-    if (!userId) return null;
+    if (!db || !userId) return null;
     return doc(db, 'artifacts', appId, 'users', userId, 'playerData', 'stats');
 }
 
@@ -184,8 +190,8 @@ function updateUI() {
         if (element) element.textContent = text;
     };
 
-    // Update global user info
-    safeSetText('user-info', `USER ID: ${userId ? userId.substring(0, 8)}...`);
+    // Update global user info (MANDATORY: Show full ID for collaboration)
+    safeSetText('user-info', `USER ID: ${userId || 'Guest'}`); // FIX APPLIED HERE
     safeSetText('player-id-display', userId || 'Guest');
 
     // Update MY STATS screen
@@ -286,6 +292,10 @@ function quitGame() {
  */
 function setupCanvas() {
     canvas = document.getElementById('game-canvas');
+    if (!canvas) {
+        console.error("Canvas element not found!");
+        return;
+    }
     ctx = canvas.getContext('2d');
 
     // Add event listeners for shooting mechanics
@@ -297,6 +307,8 @@ function setupCanvas() {
     canvas.addEventListener('touchstart', handleStart);
     canvas.addEventListener('touchmove', handleMove);
     canvas.addEventListener('touchend', handleEnd);
+    
+    console.log("Canvas setup complete.");
 }
 
 /**
@@ -744,7 +756,9 @@ function hideMessageBox() {
     }
 }
 
-// Global window functions for HTML button handlers
+// --- GLOBAL EXPOSURE (FIX FOR ONCLICK) ---
+// This is critical when using <script type="module">
+// It ensures that the functions called by inline 'onclick' handlers are available globally.
 window.showMainMenu = showMainMenu;
 window.quickPlay = quickPlay;
 window.loadMissions = loadMissions;
@@ -759,9 +773,12 @@ window.completeMission2 = completeMission2;
 window.showMessageBox = showMessageBox;
 window.hideMessageBox = hideMessageBox;
 
+
 // --- START APP ---
 // Wait for the window to load before initializing Firebase and the UI.
 window.onload = function() {
+    // Canvas is part of the DOM, so ensure it's set up before quickPlay is ever called
+    setupCanvas(); 
     initApp();
-    showMainMenu();
+    // showMainMenu will be called inside onAuthStateChanged to ensure user context is ready
 }
