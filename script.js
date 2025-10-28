@@ -1,1002 +1,767 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>THE G.O.A.T. PROJECT</title>
-    <!-- Load Tailwind CSS for modern aesthetics and responsive design -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Load Font Awesome for icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    
-    <style>
-        /* Custom Neon Theme */
-        @import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@400;700;900&family=Inter:wght@400;700&display=swap');
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { 
+    getAuth, 
+    signInAnonymously, 
+    signInWithCustomToken, 
+    onAuthStateChanged,
+    setPersistence,
+    browserLocalPersistence
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { 
+    getFirestore, 
+    doc, 
+    setDoc, 
+    getDoc, 
+    onSnapshot, 
+    collection, 
+    query 
+} from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        :root {
-            --neon-blue: #00c4ff;
-            --neon-pink: #ff00ff;
-            --dark-bg: #1a1a2e;
-            --mid-bg: #2c2c44;
-            --text-color: #f0f0f0;
-            --court-color: #0d0d1a;
-        }
+// --- GLOBAL FIREBASE & GAME STATE ---
 
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--dark-bg);
-            color: var(--text-color);
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 10px;
-        }
+// IMPORTANT: Global variables provided by the Canvas environment
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
-        /* Main App Container */
-        #main-wrapper {
-            width: 100%;
-            max-width: 1000px;
-            background-color: var(--mid-bg);
-            border-radius: 12px;
-            box-shadow: 0 0 40px rgba(0, 196, 255, 0.3);
-            padding: 20px;
-            min-height: 90vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
+let app;
+let db;
+let auth;
+let userId = null;
+let isAuthReady = false;
 
-        /* Titles */
-        .main-title {
-            font-family: 'Exo 2', sans-serif;
-            font-weight: 900;
-            font-size: 2.5rem;
-            text-shadow: 0 0 10px var(--neon-pink), 0 0 20px var(--neon-pink);
-            color: var(--text-color);
-            margin-bottom: 30px;
-            text-align: center;
-        }
+// Player Data State (Local)
+let playerData = {
+    overallRating: 75,
+    highScore: 0,
+    currentMission: 1, // 1 = The Jump Start
+    missions: {
+        1: { completed: false, value: 0 },
+        2: { completed: false, value: 0 }
+    }
+};
+
+// Quick Play Game State
+let canvas, ctx;
+const ballRadius = 15;
+const hoopPosition = { x: 700, y: 150, width: 40, height: 10 };
+const GRAVITY = 0.5;
+const AIR_FRICTION = 0.99;
+let isGameRunning = false;
+
+let ball = {
+    x: 60,
+    y: 400,
+    vx: 0,
+    vy: 0,
+    state: 'ready', // 'ready', 'dragging', 'flying', 'scored'
+    scoreFlag: false // Prevents scoring multiple times per shot
+};
+
+let gameScore = 0;
+let shotsFired = 0;
+let dragStart = { x: 0, y: 0 };
+let currentDrag = { x: 0, y: 0 };
+
+// --- FIREBASE INITIALIZATION & AUTHENTICATION ---
+
+/**
+ * Initializes Firebase, authenticates the user, and sets up the data listener.
+ */
+async function initApp() {
+    try {
+        app = initializeApp(firebaseConfig);
+        db = getFirestore(app);
+        auth = getAuth(app);
         
-        .screen h2 {
-            font-family: 'Exo 2', sans-serif;
-            font-size: 1.8rem;
-            color: var(--neon-blue);
-            text-shadow: 0 0 8px rgba(0, 196, 255, 0.7);
-            margin-bottom: 20px;
+        // Use local persistence to maintain user state
+        await setPersistence(auth, browserLocalPersistence);
+
+        // Sign in using the custom token if provided, otherwise sign in anonymously
+        if (initialAuthToken) {
+            await signInWithCustomToken(auth, initialAuthToken);
+        } else {
+            await signInAnonymously(auth);
         }
 
-        /* Menu/Button Styling */
-        .menu-bar {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-            width: 100%;
-            max-width: 300px;
-        }
-
-        .menu-button, .neon-btn {
-            background-color: var(--neon-blue);
-            color: var(--dark-bg);
-            font-family: 'Exo 2', sans-serif;
-            font-weight: 700;
-            padding: 12px 24px;
-            border-radius: 8px;
-            text-transform: uppercase;
-            transition: all 0.2s ease-in-out;
-            box-shadow: 0 0 10px rgba(0, 196, 255, 0.7);
-            border: 2px solid var(--neon-blue);
-            cursor: pointer;
-            text-align: center;
-        }
-
-        .menu-button:hover, .neon-btn:hover {
-            background-color: var(--neon-pink);
-            color: var(--dark-bg);
-            box-shadow: 0 0 20px var(--neon-pink);
-            border-color: var(--neon-pink);
-            transform: translateY(-2px);
-        }
-
-        /* Canvas Specific Styling */
-        #game-canvas {
-            border: 4px solid var(--neon-blue);
-            box-shadow: 0 0 15px var(--neon-blue), 0 0 25px var(--neon-blue) inset;
-            background-color: var(--court-color);
-            border-radius: 8px;
-            touch-action: none;
-            width: 100%;
-            max-width: 760px;
-            height: auto;
-        }
-
-        .mission-item {
-            width: 100%;
-            padding: 10px;
-            margin-top: 10px;
-            border-radius: 6px;
-            background-color: var(--mid-bg);
-            border: 1px solid var(--neon-blue);
-            color: var(--text-color);
-            transition: background-color 0.1s;
-            text-align: left; /* Missions text is left-aligned */
-        }
-        
-        .mission-item:not([disabled]):hover {
-            background-color: var(--neon-blue);
-            color: var(--dark-bg);
-        }
-        
-        .mission-item[disabled] {
-            opacity: 0.5;
-            cursor: not-allowed;
-            border-color: #555;
-            color: #aaa;
-        }
-
-        .hidden {
-            display: none !important;
-        }
-        
-        /* Custom Alert Modal */
-        #message-modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.7);
-            display: none; /* Controlled by JS */
-            place-items: center;
-            z-index: 1000;
-        }
-        #message-box {
-            background-color: var(--mid-bg);
-            border: 3px solid var(--neon-pink);
-            border-radius: 12px;
-            padding: 25px;
-            max-width: 400px;
-            width: 90%;
-            text-align: center;
-            box-shadow: 0 0 20px var(--neon-pink);
-        }
-        .modal-text {
-            margin-bottom: 20px;
-            font-size: 1.1rem;
-            color: var(--text-color);
-        }
-
-        /* Canvas Shake Effect */
-        @keyframes shake {
-            0% { transform: translate(1px, 1px) rotate(0deg); }
-            10% { transform: translate(-1px, -2px) rotate(-1deg); }
-            20% { transform: translate(-3px, 0px) rotate(1deg); }
-            30% { transform: translate(3px, 2px) rotate(0deg); }
-            40% { transform: translate(1px, -1px) rotate(1deg); }
-            50% { transform: translate(-1px, 2px) rotate(-1deg); }
-            60% { transform: translate(-3px, 1px) rotate(0deg); }
-            70% { transform: translate(3px, 1px) rotate(-1deg); }
-            80% { transform: translate(-1px, -1px) rotate(1deg); }
-            90% { transform: translate(1px, 2px) rotate(0deg); }
-            100% { transform: translate(1px, -2px) rotate(-1deg); }
-        }
-        .shake {
-            animation: shake 0.2s cubic-bezier(.36,.07,.19,.97) both;
-            transform: translate3d(0, 0, 0);
-            backface-visibility: hidden;
-            perspective: 1000px;
-        }
-    </style>
-</head>
-<body class="p-0 sm:p-4">
-    <div id="main-wrapper">
-        <!-- Main Menu Screen -->
-        <div class="main-menu-container text-center" id="main-menu-container">
-            <h1 class="main-title">THE G.O.A.T. PROJECT</h1>
-            <div class="menu-bar mx-auto">
-                <button class="menu-button" onclick="quickPlay()">QUICK PLAY</button>
-                <button class="menu-button" onclick="loadMissions()">MISSIONS</button>
-                <button class="menu-button" onclick="loadMyHub()">MY HUB</button>
-                <button class="menu-button" onclick="loadOptions()">OPTIONS</button>
-                <button class="menu-button" onclick="quitGame()">QUIT</button>
-            </div>
-            <div id="user-info" class="mt-8 text-sm text-neon-blue"></div>
-        </div>
-
-        <!-- QUICK PLAY GAME SCREEN (2D Hoops) -->
-        <div id="quick-play-game-screen" class="screen hidden">
-            <h2 class="mb-4 text-center">BACKYARD HOOPZ - QUICK PLAY</h2>
-            
-            <!-- Game Canvas and Controls -->
-            <div class="w-full max-w-[760px] flex flex-col items-center">
-                
-                <canvas id="game-canvas" width="760" height="480"></canvas>
-                
-                <div class="control-bar flex justify-between w-full mt-4 p-3 rounded-xl border border-neon-pink shadow-lg shadow-pink-500/20">
-                    <div id="score-display" class="text-lg font-bold text-neon-blue">SCORE: 0</div>
-                    <div id="high-score-display" class="text-lg font-bold text-neon-pink">BEST: 0</div>
-                    <div id="shots-fired" class="text-lg font-bold text-neon-blue">SHOTS: 0</div>
-                </div>
-
-                <p id="game-message" class="text-center mt-4 text-lg font-bold text-neon-pink">Click & drag to shoot!</p>
-                
-                <button class="menu-button mt-6 w-full max-w-[200px]" onclick="showMainMenu()">
-                    <i class="fas fa-arrow-left mr-2"></i>EXIT GAME
-                </button>
-            </div>
-        </div>
-
-        <!-- MISSIONS LOG SCREEN -->
-        <div class="missions-log-container text-center hidden" id="missions-screen">
-            <h2>MISSIONS LOG</h2>
-            <div class="w-full max-w-sm mx-auto flex flex-col gap-3">
-                <button class="mission-item" id="mission-1-button" onclick="startMission(1)">1. The Jump Start (STATUS)</button>
-                <button class="mission-item" id="mission-2-button" onclick="startMission(2)">2. The Rookie Contract (STATUS)</button>
-            </div>
-            <button class="menu-button mt-8 w-full max-w-[200px]" onclick="showMainMenu()">BACK</button>
-        </div>
-        
-        <!-- MY HUB SCREEN -->
-        <div class="my-player-container text-center hidden" id="my-hub-screen">
-            <h2>MY HUB</h2>
-            <p class="text-gray-300">Welcome to your personal dashboard.</p>
-            <div class="menu-bar mt-6 mx-auto">
-                <button class="menu-button" onclick="loadMyStats()">VIEW MY STATS</button>
-                <button class="menu-button" onclick="loadTraining()">TRAINING FACILITY</button>
-            </div>
-            <button class="menu-button mt-8 w-full max-w-[200px]" onclick="showMainMenu()">BACK</button>
-        </div>
-
-        <!-- MY STATS SCREEN -->
-        <div class="my-player-container text-center hidden" id="my-stats-screen">
-            <h2>MY PLAYER STATS</h2>
-            <div class="mt-4 p-4 bg-dark-bg rounded-lg border border-neon-blue/50 max-w-md mx-auto">
-                <p class="mb-2"><strong>Player ID:</strong> <span id="player-id-display">N/A</span></p>
-                <p class="mb-2"><strong>Overall Rating:</strong> <span id="stats-overall-rating">75</span></p>
-                <p class="mb-2"><strong>Position:</strong> Point Guard</p>
-                <p class="mb-2"><strong>Quick Play High Score:</strong> <span id="stats-high-score">0</span></p>
-            </div>
-            <p class="mt-4" id="stats-current-mission"><strong>Current Mission:</strong> The Jump Start</p>
-            <div class="progress-bar-container w-full max-w-xs h-3 bg-gray-700 mx-auto mt-2 rounded-full overflow-hidden">
-                <div class="bg-neon-pink h-full transition-all duration-500" id="mission-progress-bar" style="width: 0%;"></div>
-            </div>
-            <button class="menu-button mt-8 w-full max-w-[200px]" onclick="loadMyHub()">BACK TO HUB</button>
-        </div>
-
-        <!-- OPTIONS SCREEN -->
-        <div class="options-container text-center hidden" id="options-screen">
-            <h2>OPTIONS</h2>
-            <div class="p-4 bg-dark-bg rounded-lg border border-neon-pink/50 max-w-md mx-auto">
-                <p class="mb-2">VOLUME: [|||||||||||--]</p>
-                <p class="mb-2">DIFFICULTY: Rookie</p>
-                <p>LANGUAGE: English</p>
-            </div>
-            <button class="menu-button mt-8 w-full max-w-[200px]" onclick="showMainMenu()">BACK</button>
-        </div>
-
-        <!-- QUIT SCREEN -->
-        <div class="quit-container text-center hidden" id="quit-screen">
-            <h2>GAME OVER</h2>
-            <p class="text-gray-300">Thanks for playing THE G.O.A.T. PROJECT demo!</p>
-            <p class="text-gray-300">You can close your browser tab now.</p>
-            <button class="menu-button mt-8 w-full max-w-[200px]" onclick="showMainMenu()">START NEW GAME</button>
-        </div>
-        
-        <!-- MISSION 1 SCREEN (Power Meter) -->
-        <div class="mission-screen text-center hidden" id="mission-1-screen">
-            <h2>MISSION 1: THE JUMP START</h2>
-            <p class="text-gray-300">Coach says: Hit the button when the meter reaches 95 for a perfect pass!</p>
-            
-            <div class="mission-content mt-6">
-                <h1 id="meter-display" class="text-6xl font-extrabold text-neon-pink my-4">0</h1>
-                <button class="menu-button w-48" onclick="stopMeter()">SHOOT / PASS</button>
-            </div>
-
-            <div id="mission-feedback" class="mt-8 text-xl font-bold"></div>
-
-            <button class="menu-button mt-8 w-48" onclick="showMainMenu()">EXIT MISSION</button>
-        </div>
-        
-        <!-- MISSION 2 SCREEN (Rookie Contract) -->
-        <div class="mission-screen text-center hidden" id="mission-2-screen">
-            <h2>MISSION 2: THE ROOKIE CONTRACT</h2>
-            <p class="text-gray-300">Your agent, Mr. Smith, has two contract offers for you. He asks: **Which offer do you take?**</p>
-            
-            <div class="mission-content mt-6 flex flex-col gap-4 w-full max-w-md mx-auto">
-                <button class="menu-button" onclick="completeMission2(1)">Option 1: Small Bonus, High Incentives (+5 OVERALL)</button>
-                <button class="menu-button" onclick="completeMission2(0)">Option 2: Large Bonus, Low Incentives (+1 OVERALL)</button>
-            </div>
-            
-            <button class="menu-button mt-8 w-48" onclick="showMainMenu()">EXIT MISSION</button>
-        </div>
-    </div>
-    
-    <!-- Custom Message Modal (Replaces alert()) -->
-    <div id="message-modal" class="hidden absolute top-0 left-0 w-full h-full flex items-center justify-center">
-        <div id="message-box">
-            <p id="modal-text" class="modal-text"></p>
-            <button class="neon-btn text-sm" onclick="hideMessageBox()">OK</button>
-        </div>
-    </div>
-
-    <!-- Combined JavaScript for Firebase, Menu Navigation, and Game Logic -->
-    <script type="module">
-        // --- Firebase Setup ---
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // Global Firebase and Canvas variables (MUST BE USED)
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-        
-        let app, db, auth;
-        let userId = 'guest';
-        let isAuthReady = false;
-        
-        const FIREBASE_COLLECTION = `artifacts/${appId}/users`;
-        const FIREBASE_DOC_ID = 'game_data';
-
-        // --- GAME STATE VARIABLES (from user's script.js - using localStorage) ---
-        let playerCurrentMission = 1; 
-        let playerOverall = 75;
-        let missionProgress = 0;
-        let meterInterval = null;
-        let meterValue = 0;
-
-
-        // --- CUSTOM MESSAGE BOX (Replaces alert() and confirm()) ---
-        function showMessageBox(message, callback = null) {
-            document.getElementById('modal-text').textContent = message;
-            document.getElementById('message-modal').style.display = 'grid';
-            
-            // Re-assign OK button handler
-            const okButton = document.querySelector('#message-box button');
-            okButton.onclick = () => {
-                hideMessageBox();
-                if (callback) callback();
-            };
-        }
-
-        function hideMessageBox() {
-            document.getElementById('message-modal').style.display = 'none';
-        }
-
-        // --- SAVE/LOAD GAME STATE (User's localStorage implementation) ---
-        // This handles player stats and mission progress.
-        function saveGame() {
-            const gameState = {
-                mission: playerCurrentMission,
-                overall: playerOverall,
-                progress: missionProgress
-            };
-            localStorage.setItem('goatProjectSave', JSON.stringify(gameState));
-            console.log("Player State Saved to localStorage!");
-        }
-
-        function loadGame() {
-            const savedState = localStorage.getItem('goatProjectSave');
-            if (savedState) {
-                const gameState = JSON.parse(savedState);
-                playerCurrentMission = gameState.mission;
-                playerOverall = gameState.overall;
-                missionProgress = gameState.progress;
-                console.log(`Player State Loaded! Current Mission: ${playerCurrentMission}, Overall: ${playerOverall}`);
-            } else {
-                console.log("No saved player state found. Starting new game.");
-            }
-        }
-        
-        // --- FIREBASE HIGH SCORE FUNCTIONS (Kept for environment compliance) ---
-        // This handles only the Quick Play High Score.
-        let quickPlayData = { score: 0, highScore: 0, shots: 0 }; // Used for current session
-        
-        const initializeFirebase = async () => {
-            if (!firebaseConfig) {
-                console.error("Firebase config is missing. Data persistence disabled.");
+        // Auth state change listener
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                userId = user.uid;
                 isAuthReady = true;
-                return;
-            }
-            try {
-                app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
+                console.log("Firebase Auth Ready. User ID:", userId);
                 
-                if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
-                } else {
-                    await signInAnonymously(auth);
-                }
-
-                onAuthStateChanged(auth, (user) => {
-                    if (user) {
-                        userId = user.uid;
-                        isAuthReady = true;
-                        document.getElementById('user-info').textContent = `Authenticated ID: ${userId.substring(0, 8)}...`;
-                        document.getElementById('player-id-display').textContent = userId;
-                        loadGameData(); // Load Firebase High Score
-                    } else {
-                        userId = crypto.randomUUID();
-                        isAuthReady = true;
-                        document.getElementById('player-id-display').textContent = userId;
-                        loadGameData(); // Load Firebase High Score (or initialize)
-                    }
-                });
-            } catch (error) {
-                console.error("Error initializing Firebase:", error);
+                // Set up real-time listener for player data
+                setupDataListener();
+            } else {
+                // Should not happen with anonymous auth, but good practice
+                console.log("No user signed in. Using default ID.");
+                userId = 'guest-' + crypto.randomUUID(); 
                 isAuthReady = true;
+                // Still update UI with initial data
+                updateUI();
             }
-        };
+        });
 
-        const loadGameData = () => {
-            if (!isAuthReady || !db) return;
-            const docRef = doc(db, FIREBASE_COLLECTION, userId, 'data', FIREBASE_DOC_ID);
-            
-            onSnapshot(docRef, (docSnap) => {
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    quickPlayData.highScore = data.highScore || 0;
-                } else {
-                    quickPlayData.highScore = 0;
-                    saveGameData(); // Create initial document
-                }
-                updateGameUI(); // Update UI with loaded high score
-                document.getElementById('stats-high-score').textContent = quickPlayData.highScore;
-            }, (error) => {
-                console.error("Error listening to quick play data:", error);
-            });
-        };
+    } catch (e) {
+        console.error("Firebase Initialization Error:", e);
+        // Fallback for UI even if Firebase fails
+        isAuthReady = true;
+        updateUI();
+    }
+}
 
-        const saveGameData = () => {
-            if (!isAuthReady || !db) return;
-            const docRef = doc(db, FIREBASE_COLLECTION, userId, 'data', FIREBASE_DOC_ID);
-            setDoc(docRef, { 
-                highScore: quickPlayData.highScore 
-            }, { merge: true }).catch(error => {
-                console.error("Error saving quick play data:", error);
-            });
-        };
+// --- FIRESTORE DATA HANDLING ---
+
+/**
+ * Constructs the Firestore path for the player's private data.
+ */
+function getPlayerDocRef() {
+    if (!userId) return null;
+    return doc(db, 'artifacts', appId, 'users', userId, 'playerData', 'stats');
+}
+
+/**
+ * Sets up a real-time listener for the player's stats document.
+ */
+function setupDataListener() {
+    const docRef = getPlayerDocRef();
+    if (!docRef) return;
+
+    // Listen for real-time updates
+    onSnapshot(docRef, (docSnap) => {
+        if (docSnap.exists()) {
+            // Data received from Firestore
+            const data = docSnap.data();
+            playerData = { ...playerData, ...data };
+            console.log("Player data updated in real-time:", playerData);
+        } else {
+            console.log("No player data found. Creating default data.");
+            // If the document doesn't exist, save the default data (this creates the document)
+            savePlayerData();
+        }
+        updateUI();
+    }, (error) => {
+        console.error("Firestore real-time listener error:", error);
+    });
+}
+
+/**
+ * Saves the current local playerData object to Firestore.
+ */
+async function savePlayerData() {
+    if (!isAuthReady || !userId) {
+        console.warn("Authentication not ready. Cannot save data.");
+        return;
+    }
+    const docRef = getPlayerDocRef();
+    if (!docRef) {
+        console.error("Could not get Firestore document reference.");
+        return;
+    }
+
+    try {
+        // Use setDoc to create or overwrite the document
+        await setDoc(docRef, playerData, { merge: true });
+        console.log("Player data successfully saved!");
+    } catch (e) {
+        console.error("Error saving player data:", e);
+    }
+}
+
+// --- UI AND SCREEN MANAGEMENT ---
+
+/**
+ * Updates all screen elements with the current playerData.
+ */
+function updateUI() {
+    // Check if the auth state has been determined before updating UI with user-specific data
+    if (!isAuthReady) return; 
+
+    // Helper to safely set text content
+    const safeSetText = (id, text) => {
+        const element = document.getElementById(id);
+        if (element) element.textContent = text;
+    };
+
+    // Update global user info
+    safeSetText('user-info', `USER ID: ${userId ? userId.substring(0, 8)}...`);
+    safeSetText('player-id-display', userId || 'Guest');
+
+    // Update MY STATS screen
+    safeSetText('stats-overall-rating', playerData.overallRating);
+    safeSetText('stats-high-score', playerData.highScore);
+    
+    const progressBar = document.getElementById('mission-progress-bar');
+    if (progressBar) {
+        // Simple progress based on overall rating (just for visual flair)
+        const progressPercent = Math.min(100, (playerData.overallRating - 75) * 4); 
+        progressBar.style.width = `${progressPercent}%`;
+    }
+
+    // Update Quick Play High Score Display
+    safeSetText('high-score-display', `BEST: ${playerData.highScore}`);
+
+    // Update Mission buttons based on completion
+    const mission2Button = document.getElementById('mission-2-button');
+    if (mission2Button) {
+        mission2Button.textContent = playerData.missions[1].completed 
+            ? '2. The Rookie Contract (AVAILABLE)' 
+            : '2. The Rookie Contract (LOCKED)';
+        mission2Button.disabled = !playerData.missions[1].completed;
+    }
+}
+
+/**
+ * Hides all main content screens and shows only the target screen.
+ */
+function showScreen(screenId) {
+    const screens = [
+        'main-menu-container', 'quick-play-game-screen', 'missions-screen', 
+        'my-hub-screen', 'my-stats-screen', 'options-screen', 'quit-screen', 
+        'mission-1-screen', 'mission-2-screen'
+    ];
+    
+    screens.forEach(id => {
+        const screen = document.getElementById(id);
+        if (screen) {
+            screen.classList.add('hidden');
+            // Stop Mission 1 meter if exiting
+            if (id.includes('mission-1')) clearInterval(missionMeterInterval);
+        }
+    });
+
+    const targetScreen = document.getElementById(screenId);
+    if (targetScreen) {
+        targetScreen.classList.remove('hidden');
+    }
+}
+
+// Menu Functions
+function showMainMenu() {
+    showScreen('main-menu-container');
+    // Ensure the game loop is stopped when exiting Quick Play
+    isGameRunning = false;
+}
+
+function quickPlay() {
+    showScreen('quick-play-game-screen');
+    // Initialize or restart the game loop
+    if (!canvas) {
+        setupCanvas();
+    }
+    if (!isGameRunning) {
+        isGameRunning = true;
+        gameLoop();
+    }
+    resetGame(false); // Start a new session
+}
+
+function loadMissions() {
+    showScreen('missions-screen');
+}
+
+function loadMyHub() {
+    showScreen('my-hub-screen');
+    updateUI();
+}
+
+function loadMyStats() {
+    showScreen('my-stats-screen');
+    updateUI();
+}
+
+function loadOptions() {
+    showScreen('options-screen');
+}
+
+function quitGame() {
+    showScreen('quit-screen');
+}
+
+// --- QUICK PLAY (BACKYARD HOOPZ) LOGIC ---
+
+/**
+ * Sets up the canvas and event listeners for the game.
+ */
+function setupCanvas() {
+    canvas = document.getElementById('game-canvas');
+    ctx = canvas.getContext('2d');
+
+    // Add event listeners for shooting mechanics
+    canvas.addEventListener('mousedown', handleStart);
+    canvas.addEventListener('mousemove', handleMove);
+    canvas.addEventListener('mouseup', handleEnd);
+    
+    // Add touch listeners for mobile
+    canvas.addEventListener('touchstart', handleStart);
+    canvas.addEventListener('touchmove', handleMove);
+    canvas.addEventListener('touchend', handleEnd);
+}
+
+/**
+ * Resets the ball position, score, and shot counter.
+ * @param {boolean} fullReset - If true, resets score and shots. If false, just resets ball state.
+ */
+function resetGame(fullReset = true) {
+    ball.x = 60;
+    ball.y = 400;
+    ball.vx = 0;
+    ball.vy = 0;
+    ball.state = 'ready';
+    ball.scoreFlag = false;
+
+    if (fullReset) {
+        gameScore = 0;
+        shotsFired = 0;
+    }
+    
+    // Update score displays
+    const scoreDisplay = document.getElementById('score-display');
+    const shotsDisplay = document.getElementById('shots-fired');
+
+    if (scoreDisplay) scoreDisplay.textContent = `SCORE: ${gameScore}`;
+    if (shotsDisplay) shotsDisplay.textContent = `SHOTS: ${shotsFired}`;
+    
+    // Redraw immediately to show the reset state
+    if (isGameRunning) {
+         drawCourt();
+         drawHoop();
+         drawBall();
+    }
+}
+
+// Input Handlers
+function getEventLocation(e) {
+    const rect = canvas.getBoundingClientRect();
+    let x, y;
+    
+    if (e.touches && e.touches.length > 0) {
+        x = e.touches[0].clientX - rect.left;
+        y = e.touches[0].clientY - rect.top;
+    } else {
+        x = e.clientX - rect.left;
+        y = e.clientY - rect.top;
+    }
+    return { x, y };
+}
+
+function handleStart(e) {
+    if (ball.state !== 'ready') return;
+    
+    const pos = getEventLocation(e);
+    // Check if click is on the ball
+    if (Math.hypot(pos.x - ball.x, pos.y - ball.y) < ballRadius) {
+        ball.state = 'dragging';
+        dragStart = pos;
+        currentDrag = pos;
+        e.preventDefault(); 
+    }
+}
+
+function handleMove(e) {
+    if (ball.state !== 'dragging') return;
+    currentDrag = getEventLocation(e);
+    e.preventDefault(); 
+}
+
+function handleEnd(e) {
+    if (ball.state !== 'dragging') return;
+    
+    const dragEnd = getEventLocation(e);
+    
+    // Calculate launch velocity (slingshot effect)
+    // The direction is opposite the drag
+    const dx = dragStart.x - dragEnd.x;
+    const dy = dragStart.y - dragEnd.y;
+    
+    // Scale the velocity (adjust the multiplier for desired power)
+    ball.vx = dx * 0.15;
+    ball.vy = dy * 0.15; 
+    
+    // Limit max velocity
+    const maxSpeed = 25;
+    const speed = Math.hypot(ball.vx, ball.vy);
+    if (speed > maxSpeed) {
+        ball.vx = (ball.vx / speed) * maxSpeed;
+        ball.vy = (ball.vy / speed) * maxSpeed;
+    }
+
+    ball.state = 'flying';
+    shotsFired++;
+    const shotsDisplay = document.getElementById('shots-fired');
+    if (shotsDisplay) shotsDisplay.textContent = `SHOTS: ${shotsFired}`;
+    e.preventDefault(); 
+}
+
+// Drawing Functions
+
+function drawCourt() {
+    // 1. Clear the canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // 2. Draw the streetball court surface (Dark Asphalt)
+    ctx.fillStyle = '#333333';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // 3. Draw the out-of-bounds line (White/Light Gray)
+    ctx.strokeStyle = '#CCCCCC';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    // Sidelines
+    ctx.moveTo(10, 10);
+    ctx.lineTo(canvas.width - 10, 10);
+    ctx.lineTo(canvas.width - 10, canvas.height - 10);
+    ctx.lineTo(10, canvas.height - 10);
+    ctx.closePath();
+    ctx.stroke();
+    
+    // 4. Draw the free throw line (half-court line is skipped for backyard style)
+    ctx.strokeStyle = '#CCCCCC';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(canvas.width - 250, canvas.height - 10);
+    ctx.lineTo(canvas.width - 250, 10);
+    ctx.stroke();
+}
+
+function drawHoop() {
+    const x = hoopPosition.x;
+    const y = hoopPosition.y;
+    const w = hoopPosition.width;
+    const h = hoopPosition.height;
+
+    // 1. Backboard (Neon Pink)
+    ctx.fillStyle = 'rgba(255, 0, 255, 0.8)'; // Pink
+    ctx.shadowColor = 'rgba(255, 0, 255, 1)';
+    ctx.shadowBlur = 15;
+    ctx.fillRect(x + 10, y - 50, 10, 100);
+    
+    // 2. Rim (Neon Blue)
+    ctx.fillStyle = 'rgba(0, 196, 255, 0.8)'; // Blue
+    ctx.shadowColor = 'rgba(0, 196, 255, 1)';
+    ctx.shadowBlur = 15;
+    ctx.fillRect(x - 25, y, w + 10, h); 
+
+    // Reset shadow for other elements
+    ctx.shadowBlur = 0;
+}
+
+function drawBall() {
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ballRadius, 0, Math.PI * 2);
+    
+    // Orange Basketball Color
+    ctx.fillStyle = 'orange'; 
+    ctx.fill();
+    
+    // Black lines on the basketball
+    ctx.strokeStyle = 'black';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Draw the slingshot line if dragging
+    if (ball.state === 'dragging') {
+        ctx.strokeStyle = 'rgba(255, 0, 255, 0.6)'; // Pink dotted line
+        ctx.setLineDash([5, 5]); // Dotted
+        ctx.lineWidth = 3;
         
-        // --- SCREEN MANAGEMENT (Adapted from user's script) ---
-        const screenIds = [
-            'main-menu-container', 'quick-play-game-screen',
-            'missions-screen', 'my-hub-screen', 
-            'my-stats-screen', 'options-screen', 'quit-screen',
-            'mission-1-screen', 'mission-2-screen'
-        ];
-
-        function showScreen(screenId) {
-            screenIds.forEach(id => {
-                const element = document.getElementById(id);
-                if (element) {
-                    if (id === screenId) {
-                        element.classList.remove('hidden');
-                        if (id === 'main-menu-container') {
-                             element.style.display = 'flex'; // Maintain flex for main menu layout
-                        } else {
-                             element.style.display = 'block';
-                        }
-                    } else {
-                        element.classList.add('hidden');
-                    }
-                }
-            });
-
-            // Handle game loop pausing/resuming
-            if (screenId === 'quick-play-game-screen') {
-                resetGame();
-                requestAnimationFrame(gameLoop);
-            } else {
-                 // Stop the game loop when moving to any other screen
-                 quickPlayData.shots = 0;
-                 quickPlayData.score = 0;
-            }
-        }
-
-        // --- MENU & NAVIGATION FUNCTIONS (from user's script.js) ---
-
-        function showMainMenu() {
-            if (meterInterval) {
-                clearInterval(meterInterval);
-                meterInterval = null;
-            }
-            showScreen('main-menu-container');
-        }
-
-        function quickPlay() {
-            // Quick Play always launches the 2D Basketball Game
-            showScreen('quick-play-game-screen');
-        }
-
-        function loadMissions() {
-            showScreen('missions-screen');
-            
-            let mission1Button = document.getElementById('mission-1-button');
-            let mission2Button = document.getElementById('mission-2-button');
-            
-            if (playerCurrentMission === 1) {
-                mission1Button.textContent = `1. The Jump Start (IN PROGRESS, ${missionProgress}%)`;
-                mission2Button.textContent = "2. The Rookie Contract (LOCKED)";
-                mission2Button.onclick = () => showMessageBox("Mission 2 is LOCKED! Complete Mission 1 first.");
-                mission2Button.disabled = true;
-            } else if (playerCurrentMission === 2) {
-                mission1Button.textContent = "1. The Jump Start (COMPLETED)";
-                mission2Button.textContent = "2. The Rookie Contract (AVAILABLE)";
-                mission2Button.onclick = () => startMission(2);
-                mission2Button.disabled = false;
-            } else { // playerCurrentMission >= 3
-                mission1Button.textContent = "1. The Jump Start (COMPLETED)";
-                mission2Button.textContent = "2. The Rookie Contract (COMPLETED)";
-                mission2Button.onclick = () => showMessageBox("All main missions are complete!");
-                mission2Button.disabled = true;
-            }
-        }
-
-        function loadMyHub() {
-            showScreen('my-hub-screen');
-        }
-
-        function loadMyStats() {
-            showScreen('my-stats-screen');
-            
-            let missionTitle;
-            let progress;
-
-            if (playerCurrentMission === 1) {
-                missionTitle = "The Jump Start";
-                progress = missionProgress;
-            } else if (playerCurrentMission === 2) {
-                missionTitle = "The Rookie Contract";
-                progress = 50; 
-            } else {
-                missionTitle = "THE G.O.A.T.!";
-                progress = 100;
-            }
-
-            document.getElementById('stats-overall-rating').textContent = playerOverall;
-            document.getElementById('stats-current-mission').innerHTML = '<strong>Current Mission:</strong> ' + missionTitle;
-            document.getElementById('mission-progress-bar').style.width = progress + '%';
-        }
-
-        function loadTraining() {
-            showMessageBox("Training Facility Coming Soon!");
-        }
-
-        function loadOptions() {
-            showScreen('options-screen');
-        }
-
-        function quitGame() {
-            showScreen('quit-screen');
-        }
-
-        // --- MISSION & GAMEPLAY LOGIC (from user's script.js, adapted) ---
-
-        function startMission(missionId) {
-            if (missionId === 1 && playerCurrentMission === 1) {
-                launchMission1();
-            } else if (missionId === 2 && playerCurrentMission >= 2) {
-                launchMission2();
-            } else if (missionId === 1 && playerCurrentMission > 1) {
-                showMessageBox("Mission 1 is already complete!");
-                loadMissions();
-            } else if (missionId === 2 && playerCurrentMission < 2) {
-                showMessageBox("Mission 2 is LOCKED! Complete Mission 1 first.");
-                loadMissions();
-            }
-        }
-
-        // --- Mission 1 Functions (Meter Game) ---
-        function launchMission1() {
-            showScreen('mission-1-screen');
-            meterValue = 0;
-            document.getElementById('meter-display').textContent = meterValue;
-            document.getElementById('mission-feedback').innerHTML = '';
-            
-            // The meter loop logic
-            if (meterInterval) clearInterval(meterInterval);
-            let direction = 1;
-            
-            meterInterval = setInterval(function() {
-                meterValue += direction;
-                if (meterValue > 100) {
-                    meterValue = 100;
-                    direction = -1;
-                } else if (meterValue < 0) {
-                    meterValue = 0;
-                    direction = 1;
-                }
-                document.getElementById('meter-display').textContent = meterValue;
-            }, 20);
-        }
-
-        function stopMeter() {
-            if (!meterInterval) return; // Already stopped
-            clearInterval(meterInterval);
-            meterInterval = null;
-            
-            let feedbackDiv = document.getElementById('mission-feedback');
-
-            if (meterValue >= 90 && meterValue <= 100) {
-                feedbackDiv.innerHTML = `<p class="text-neon-blue">PERFECT PASS! SCORE: ${meterValue}</p>`;
-                playerOverall += 1;
-                missionProgress = 100;
-                
-                showMessageBox("Mission 1 Complete! Overall Rating +1. Returning to Main Menu.", () => {
-                    playerCurrentMission = 2;
-                    saveGame();
-                    showMainMenu();
-                });
-                
-            } else {
-                feedbackDiv.innerHTML = `<p class="text-neon-pink">MISSED IT! SCORE: ${meterValue}. Trying again...</p>`;
-                missionProgress = meterValue;
-                setTimeout(launchMission1, 1500); // Relaunch the mission after a delay
-            }
-        }
-
-        // --- Mission 2 Functions (Contract Choice) ---
-        function launchMission2() {
-            showScreen('mission-2-screen');
-        }
-
-        function completeMission2(choiceId) {
-            let message = "";
-            
-            if (choiceId === 1) {
-                playerOverall += 5;
-                message = "SMART CHOICE! You bet on your talent. Contract signed! Your potential has increased (Overall +5).";
-            } else {
-                playerOverall += 1;
-                message = "The safer choice. Contract signed. You secured the bag, but the easy road rarely leads to greatness (Overall +1).";
-            }
-            
-            showMessageBox(`CONTRACT SIGNED! ${message}`, () => {
-                playerCurrentMission = 3;
-                saveGame();
-                showMainMenu();
-            });
-        }
-
-
-        // --- 2D HOOPS CANVAS GAME LOGIC (Quick Play) ---
-
-        const canvas = document.getElementById('game-canvas');
-        const ctx = canvas.getContext('2d');
-        const CANVAS_WIDTH = 760;
-        const CANVAS_HEIGHT = 480;
+        ctx.beginPath();
+        // Line from the ball (launch point) to the current drag position
+        ctx.moveTo(ball.x, ball.y);
+        ctx.lineTo(currentDrag.x, currentDrag.y);
+        ctx.stroke();
         
-        canvas.width = CANVAS_WIDTH;
-        canvas.height = CANVAS_HEIGHT;
+        ctx.setLineDash([]); // Reset line style
+    }
+}
 
-        // Ball State
-        const ball = {
-            x: 100, y: CANVAS_HEIGHT - 50, radius: 15, color: '#ff6600',
-            vx: 0, vy: 0, mass: 1, isThrown: false,
-        };
+// Physics & Update Functions
+function updateBall() {
+    if (ball.state === 'flying') {
+        // Apply physics
+        ball.vy += GRAVITY;
+        ball.vx *= AIR_FRICTION;
+        ball.vy *= AIR_FRICTION;
 
-        // Hoop State
-        const hoop = {
-            backboardX: CANVAS_WIDTH - 50, backboardY: 100, backboardH: 100,
-            rimX: CANVAS_WIDTH - 80, rimY: 140, rimW: 10, rimThickness: 3,
-            netZone: { x: CANVAS_WIDTH - 90, y: 140, w: 20, h: 5 },
-        };
+        ball.x += ball.vx;
+        ball.y += ball.vy;
+
+        // Wall collision (rebound)
+        if (ball.x - ballRadius < 10 || ball.x + ballRadius > canvas.width - 10) {
+            ball.vx = -ball.vx * 0.8; // Bounce with energy loss
+            ball.x = Math.max(ballRadius + 10, Math.min(canvas.width - ballRadius - 10, ball.x));
+        }
+
+        // Floor collision (stop)
+        if (ball.y + ballRadius > canvas.height - 10) {
+            ball.vy = -ball.vy * 0.7; // Bounce
+            ball.y = canvas.height - ballRadius - 10;
+            if (Math.abs(ball.vy) < 1) {
+                ball.state = 'bouncing'; // Change state to allow it to settle
+            }
+        }
+    }
+    
+    if (ball.state === 'bouncing') {
+        ball.vy += GRAVITY;
+        ball.y += ball.vy;
         
-        let lastUpdateTime = 0;
-        const gravity = 0.5;
-        let isDragging = false;
-        let startPoint = { x: 0, y: 0 };
-        let endPoint = { x: 0, y: 0 };
-        let shotVelocityScale = 0.15;
-        let goalScored = false;
-
-        const resetGame = () => {
-            quickPlayData.score = 0;
-            quickPlayData.shots = 0;
-            updateGameUI();
-            resetBall();
-            document.getElementById('game-message').textContent = "Click & drag to shoot!";
-            canvas.classList.remove('shake');
-        };
-
-        const resetBall = () => {
-            ball.x = 100;
-            ball.y = CANVAS_HEIGHT - 50;
-            ball.vx = 0;
+        // Settle on the ground
+        if (ball.y + ballRadius >= canvas.height - 10) {
+            ball.y = canvas.height - ballRadius - 10;
             ball.vy = 0;
-            ball.isThrown = false;
-            isDragging = false;
-            goalScored = false;
-        };
-
-        const updateGameUI = () => {
-            document.getElementById('score-display').textContent = `SCORE: ${quickPlayData.score}`;
-            document.getElementById('high-score-display').textContent = `BEST: ${quickPlayData.highScore}`;
-            document.getElementById('shots-fired').textContent = `SHOTS: ${quickPlayData.shots}`;
-        };
-
-        function varToRgb(cssVar, alpha = 1) {
-            const hex = getComputedStyle(document.documentElement).getPropertyValue(cssVar).trim();
-            if (hex.startsWith('#') && hex.length === 7) {
-                const r = parseInt(hex.substring(1, 3), 16);
-                const g = parseInt(hex.substring(3, 5), 16);
-                const b = parseInt(hex.substring(5, 7), 16);
-                return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+            ball.vx = 0;
+            // After settling, reset to ready state
+            if (shotsFired > 0) {
+                 setTimeout(() => ball.state = 'ready', 1500); // Give player time to see the result
             }
-            return hex;
         }
+    }
 
-        const drawCourt = () => {
-            const gradient = ctx.createLinearGradient(0, CANVAS_HEIGHT, 0, CANVAS_HEIGHT - 100);
-            gradient.addColorStop(0, '#0d0d1a');
-            gradient.addColorStop(1, '#1a1a2e');
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-            ctx.strokeStyle = varToRgb('--neon-blue');
-            ctx.lineWidth = 4;
-            ctx.beginPath();
-            ctx.arc(100, CANVAS_HEIGHT, 150, Math.PI * 1.5, Math.PI * 0.5, true);
-            ctx.stroke();
-
-            ctx.strokeStyle = varToRgb('--neon-blue');
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(CANVAS_WIDTH / 2, 0);
-            ctx.lineTo(CANVAS_WIDTH / 2, CANVAS_HEIGHT);
-            ctx.stroke();
-        };
-
-        const drawHoop = () => {
-            ctx.fillStyle = varToRgb('--neon-pink');
-            ctx.shadowColor = varToRgb('--neon-pink');
-            ctx.shadowBlur = 15;
-            ctx.fillRect(hoop.backboardX, hoop.backboardY, hoop.rimThickness, hoop.backboardH);
-
-            ctx.fillStyle = varToRgb('--neon-blue');
-            ctx.shadowColor = varToRgb('--neon-blue');
-            ctx.fillRect(hoop.rimX, hoop.rimY, hoop.rimW, hoop.rimThickness);
-            
-            ctx.shadowBlur = 0;
-        };
-
-        const drawBall = () => {
-            ctx.beginPath();
-            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
-            ctx.fillStyle = ball.color;
-            ctx.fill();
-            
-            ctx.strokeStyle = 'rgba(0,0,0,0.5)';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(ball.x - ball.radius, ball.y);
-            ctx.lineTo(ball.x + ball.radius, ball.y);
-            ctx.moveTo(ball.x, ball.y - ball.radius);
-            ctx.lineTo(ball.x, ball.y + ball.radius);
-            ctx.stroke();
-        };
+    // HOOP/SCORING LOGIC
+    // Check for collision with the backboard (Right side of the court)
+    const backboardX = hoopPosition.x + 10;
+    const backboardY = hoopPosition.y - 50;
+    const backboardW = 10;
+    const backboardH = 100;
+    
+    // Simple collision with backboard (a static vertical rectangle)
+    if (ball.x + ballRadius > backboardX && ball.x - ballRadius < backboardX + backboardW &&
+        ball.y + ballRadius > backboardY && ball.y - ballRadius < backboardY + backboardH) {
         
-        const drawTrajectory = () => {
-            if (isDragging) {
-                // Draw line from start point to current mouse/touch position
-                ctx.strokeStyle = varToRgb('--neon-pink', 0.8);
-                ctx.lineWidth = 3;
-                ctx.setLineDash([5, 5]);
-                ctx.beginPath();
-                ctx.moveTo(startPoint.x, startPoint.y);
-                ctx.lineTo(endPoint.x, endPoint.y);
-                ctx.stroke();
-                ctx.setLineDash([]);
-                
-                // Draw predicted velocity vector (simple dots)
-                const dx = startPoint.x - endPoint.x;
-                const dy = startPoint.y - endPoint.y;
-                const predictionVx = dx * shotVelocityScale;
-                const predictionVy = dy * shotVelocityScale;
-                
-                let tempX = ball.x;
-                let tempY = ball.y;
-                let tempVx = predictionVx;
-                let tempVy = predictionVy;
-                
-                ctx.fillStyle = varToRgb('--neon-blue', 0.8);
-                
-                for (let i = 0; i < 60; i += 5) {
-                    tempVy += gravity * 5; 
-                    tempX += tempVx * 5;
-                    tempY += tempVy * 5;
-                    
-                    if (tempY > CANVAS_HEIGHT - ball.radius) break;
-                    
-                    ctx.beginPath();
-                    ctx.arc(tempX, tempY, 2, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-            }
-        };
-
-        const updateBall = (deltaTime) => {
-            if (!ball.isThrown) return;
-
-            ball.vy += gravity * (deltaTime / (1000 / 60));
-            
-            ball.x += ball.vx * (deltaTime / (1000 / 60));
-            ball.y += ball.vy * (deltaTime / (1000 / 60));
-            
-            // Collision with floor
-            if (ball.y + ball.radius > CANVAS_HEIGHT) {
-                ball.y = CANVAS_HEIGHT - ball.radius;
-                ball.vy *= -0.7;
-                ball.vx *= 0.95;
-                if (Math.abs(ball.vy) < 2) {
-                    ball.vy = 0;
-                    ball.vx = 0;
-                }
-            }
-
-            checkGoal();
-
-            if (Math.abs(ball.vx) < 0.1 && Math.abs(ball.vy) < 0.1 && ball.y === CANVAS_HEIGHT - ball.radius) {
-                setTimeout(resetBall, 2000);
-            }
-        };
+        // Reverse X velocity if ball is approaching from the left
+        if (ball.vx > 0 && ball.x < backboardX) {
+            ball.vx = -ball.vx * 0.7; 
+        } else if (ball.vx < 0 && ball.x > backboardX + backboardW) {
+             ball.vx = -ball.vx * 0.7;
+        }
         
-        const checkGoal = () => {
-            // Backboard collision
-            if (ball.x + ball.radius >= hoop.backboardX && ball.y > hoop.backboardY) {
-                ball.x = hoop.backboardX - ball.radius;
-                ball.vx *= -0.7;
-            }
-
-            // Rim collision
-            const rimLeft = hoop.rimX;
-            const rimRight = hoop.rimX + hoop.rimW;
-            const rimTop = hoop.rimY;
-            
-            if (ball.y + ball.radius >= rimTop && ball.y - ball.radius <= rimTop + hoop.rimThickness) {
-                if (ball.x + ball.radius > rimLeft && ball.x - ball.radius < rimRight) {
-                    ball.vy *= -0.8; 
-                    ball.y = rimTop - ball.radius;
-                }
-            }
-
-            // Score detection
-            if (ball.x > hoop.netZone.x && ball.x < hoop.netZone.x + hoop.netZone.w) {
-                if (ball.y < hoop.netZone.y && ball.vy > 0 && !goalScored) {
-                    quickPlayData.score += 2;
-                    if (quickPlayData.score > quickPlayData.highScore) {
-                        quickPlayData.highScore = quickPlayData.score;
-                        saveGameData(); // Save new high score to Firebase
-                    }
-                    updateGameUI();
-                    document.getElementById('game-message').textContent = "SWISH! +2 Points!";
-                    goalScored = true;
-                    canvas.classList.add('shake');
-                    setTimeout(() => canvas.classList.remove('shake'), 500);
-                }
-            }
-            
-            if (ball.y > CANVAS_HEIGHT) {
-                goalScored = false;
-            }
-        };
-
-        const gameLoop = (timestamp) => {
-            const deltaTime = timestamp - lastUpdateTime;
-            lastUpdateTime = timestamp;
-
-            if (document.getElementById('quick-play-game-screen').classList.contains('hidden')) {
-                return; 
-            }
-
-            ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-            drawCourt();
-            drawHoop();
-            
-            if (!ball.isThrown) {
-                drawTrajectory();
-            }
-            
-            updateBall(deltaTime);
-            drawBall();
-
-            requestAnimationFrame(gameLoop);
-        };
+        // Increase Y velocity slightly (hit sounds flat)
+        ball.vy *= 0.8;
+    }
+    
+    // Check for scoring (passing through the rim area top-down)
+    const rimX = hoopPosition.x - 25;
+    const rimY = hoopPosition.y;
+    const rimWidth = hoopPosition.width + 10;
+    
+    // Condition 1: Ball is moving downwards
+    // Condition 2: Ball center passes the top edge of the rim
+    // Condition 3: Ball is within the horizontal range of the rim
+    if (ball.vy > 0 && ball.y - ballRadius < rimY && ball.y + ballRadius > rimY && 
+        ball.x > rimX && ball.x < rimX + rimWidth) {
         
-        // --- Input Handling (Mouse and Touch) ---
-        const getCanvasCoords = (e) => {
-            const rect = canvas.getBoundingClientRect();
-            let clientX, clientY;
+        // Successful pass-through check (scoring)
+        if (!ball.scoreFlag) {
+            gameScore += 2;
+            ball.scoreFlag = true;
             
-            if (e.touches) {
-                clientX = e.touches[0].clientX;
-                clientY = e.touches[0].clientY;
+            // Update score UI
+            const scoreDisplay = document.getElementById('score-display');
+            if (scoreDisplay) scoreDisplay.textContent = `SCORE: ${gameScore}`;
+            
+            // Check for new High Score
+            if (gameScore > playerData.highScore) {
+                playerData.highScore = gameScore;
+                updateUI(); // Updates the BEST score display
+                savePlayerData(); // Save the new high score to Firestore
+                showMessageBox(`NEW HIGH SCORE! ${playerData.highScore} points!`, 'neon-pink');
             } else {
-                clientX = e.clientX;
-                clientY = e.clientY;
+                 showMessageBox("Swish! 2 Points!", 'neon-blue');
             }
+        }
+    } else if (ball.y > rimY + 50) {
+        // Reset score flag once the ball is well below the rim to allow new scoring
+        ball.scoreFlag = false;
+    }
+}
 
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
+/**
+ * Main game loop for the Quick Play screen.
+ */
+function gameLoop() {
+    if (!isGameRunning) return;
 
-            return {
-                x: (clientX - rect.left) * scaleX,
-                y: (clientY - rect.top) * scaleY,
-            };
-        };
+    drawCourt();
+    drawHoop();
+    updateBall();
+    drawBall();
 
-        const handleStart = (e) => {
-            if (ball.isThrown) return;
-            e.preventDefault(); 
-            
-            const coords = getCanvasCoords(e);
-            
-            const distance = Math.sqrt(Math.pow(coords.x - ball.x, 2) + Math.pow(coords.y - ball.y, 2));
-            if (distance < ball.radius * 2) {
-                isDragging = true;
-                startPoint = coords;
-                endPoint = coords;
-                document.getElementById('game-message').textContent = "Drag back to set power...";
-            }
-        };
+    requestAnimationFrame(gameLoop);
+}
 
-        const handleMove = (e) => {
-            if (!isDragging) return;
-            e.preventDefault(); 
-            endPoint = getCanvasCoords(e);
-        };
+// --- MISSION LOGIC ---
 
-        const handleEnd = (e) => {
-            if (!isDragging || ball.isThrown) return;
-            
-            isDragging = false;
-            ball.isThrown = true;
-            quickPlayData.shots++;
-            updateGameUI();
-            
-            const dx = startPoint.x - endPoint.x;
-            const dy = startPoint.y - endPoint.y;
-            
-            ball.vx = dx * shotVelocityScale;
-            ball.vy = dy * shotVelocityScale;
-            
-            document.getElementById('game-message').textContent = "Ball is in the air!";
-        };
+let missionMeterInterval = null;
+let missionMeterValue = 0;
+let meterDirection = 1; // 1 for up, -1 for down
 
-        const resizeCanvas = () => {
-            const container = canvas.parentElement;
-            if (container) {
-                const targetWidth = container.clientWidth;
-                canvas.style.height = `${targetWidth * (CANVAS_HEIGHT / CANVAS_WIDTH)}px`;
-            }
-        };
+function startMission(missionId) {
+    if (missionId === 1) {
+        showScreen('mission-1-screen');
+        missionMeterValue = 0;
+        meterDirection = 1;
         
+        const meterDisplay = document.getElementById('meter-display');
+        const feedback = document.getElementById('mission-feedback');
+        if(meterDisplay) meterDisplay.textContent = '0';
+        if(feedback) feedback.textContent = '';
+        
+        // Start meter animation
+        if (missionMeterInterval) clearInterval(missionMeterInterval);
+        missionMeterInterval = setInterval(updateMissionMeter, 20);
+    } else if (missionId === 2) {
+        // Mission 2 check
+        if (!playerData.missions[1].completed) {
+            showMessageBox("Mission 2 is LOCKED. Complete Mission 1 first!", 'neon-pink');
+            return;
+        }
+        showScreen('mission-2-screen');
+    }
+}
 
-        // --- INITIALIZER ---
-        window.onload = function () {
-            // 1. Initialize Firebase for High Score persistence
-            initializeFirebase();
-            
-            // 2. Load player mission state from localStorage
-            loadGame();
-            
-            // 3. Set initial screen
-            showMainMenu();
-            
-            // 4. Set up canvas event listeners for the game
-            canvas.addEventListener('mousedown', handleStart);
-            canvas.addEventListener('mousemove', handleMove);
-            canvas.addEventListener('mouseup', handleEnd);
+function updateMissionMeter() {
+    missionMeterValue += meterDirection;
+    
+    if (missionMeterValue >= 100) {
+        meterDirection = -1;
+        missionMeterValue = 100;
+    } else if (missionMeterValue <= 0) {
+        meterDirection = 1;
+        missionMeterValue = 0;
+    }
+    
+    const meterDisplay = document.getElementById('meter-display');
+    if (meterDisplay) meterDisplay.textContent = missionMeterValue;
+}
 
-            canvas.addEventListener('touchstart', handleStart);
-            canvas.addEventListener('touchmove', handleMove);
-            canvas.addEventListener('touchend', handleEnd);
-            
-            window.addEventListener('resize', resizeCanvas);
-            resizeCanvas();
-        };
+function stopMeter() {
+    if (missionMeterInterval) {
+        clearInterval(missionMeterInterval);
+        missionMeterInterval = null;
+    }
+    
+    const feedback = document.getElementById('mission-feedback');
+    if (!feedback) return;
+    
+    // Scoring logic for Mission 1 (95 is perfect)
+    let score = 0;
+    if (missionMeterValue >= 90 && missionMeterValue <= 100) {
+        score = 100;
+        feedback.textContent = 'PERFECT PASS! (+5 Overall)';
+        feedback.classList.remove('text-red-500');
+        feedback.classList.add('text-neon-blue');
+        playerData.overallRating += 5;
+    } else if (missionMeterValue >= 80 || missionMeterValue <= 10) {
+        score = 50;
+        feedback.textContent = 'GOOD! (+2 Overall)';
+        feedback.classList.remove('text-red-500');
+        feedback.classList.add('text-neon-pink');
+        playerData.overallRating += 2;
+    } else {
+        feedback.textContent = 'MISS! (No change)';
+        feedback.classList.remove('text-neon-blue', 'text-neon-pink');
+        feedback.classList.add('text-red-500');
+    }
 
-    </script>
-</body>
-</html>
+    if (score > 0) {
+        playerData.missions[1].completed = true;
+        savePlayerData();
+        updateUI();
+    }
+}
+
+function completeMission2(option) {
+    let resultMessage = '';
+    
+    if (option === 1) {
+        // Option 1: Small Bonus, High Incentives (+5 Overall)
+        playerData.overallRating += 5;
+        resultMessage = "Smart choice! You earned a +5 OVERALL boost from your incentives!";
+    } else {
+        // Option 2: Large Bonus, Low Incentives (+1 Overall)
+        playerData.overallRating += 1;
+        resultMessage = "A safe choice. You earned a +1 OVERALL boost.";
+    }
+
+    playerData.missions[2].completed = true;
+    savePlayerData();
+    updateUI();
+    showMessageBox(resultMessage, 'neon-blue');
+    showMainMenu();
+}
+
+// --- UTILITIES (Custom Modal) ---
+
+let modalTimeout;
+
+/**
+ * Displays a custom modal message.
+ * @param {string} message - The text to display.
+ * @param {string} color - 'neon-pink' or 'neon-blue' to style the modal.
+ */
+function showMessageBox(message, color = 'neon-blue') {
+    const modal = document.getElementById('message-modal');
+    const box = document.getElementById('message-box');
+    const text = document.getElementById('modal-text');
+    
+    if (modal && box && text) {
+        text.textContent = message;
+        
+        // Remove existing shadow classes
+        box.classList.remove('shadow-pink-500/70', 'shadow-blue-500/70');
+        
+        // Apply color styling
+        if (color === 'neon-pink') {
+            box.style.borderColor = 'var(--neon-pink)';
+            box.classList.add('shadow-pink-500/70');
+            // Re-apply animation for pulsing color change
+            box.style.animation = 'none';
+            void box.offsetHeight; // Trigger reflow
+            box.style.animation = 'pulse 0.8s ease-in-out infinite alternate';
+        } else {
+            box.style.borderColor = 'var(--neon-blue)';
+            box.classList.add('shadow-blue-500/70');
+            // Remove pulsing for blue
+            box.style.animation = 'none';
+        }
+        
+        modal.style.display = 'flex';
+        modal.classList.remove('hidden');
+
+        // Automatically hide the message box after a few seconds
+        clearTimeout(modalTimeout);
+        modalTimeout = setTimeout(hideMessageBox, 3000); 
+    }
+}
+
+function hideMessageBox() {
+    const modal = document.getElementById('message-modal');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.add('hidden');
+    }
+}
+
+// Global window functions for HTML button handlers
+window.showMainMenu = showMainMenu;
+window.quickPlay = quickPlay;
+window.loadMissions = loadMissions;
+window.loadMyHub = loadMyHub;
+window.loadMyStats = loadMyStats;
+window.loadOptions = loadOptions;
+window.quitGame = quitGame;
+window.resetGame = resetGame;
+window.startMission = startMission;
+window.stopMeter = stopMeter;
+window.completeMission2 = completeMission2;
+window.showMessageBox = showMessageBox;
+window.hideMessageBox = hideMessageBox;
+
+// --- START APP ---
+// Wait for the window to load before initializing Firebase and the UI.
+window.onload = function() {
+    initApp();
+    showMainMenu();
+}
