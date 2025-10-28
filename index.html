@@ -3,161 +3,1027 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>THE G.O.A.T. PROJECT</title>
-    <!-- Link to the external stylesheet (style.css) -->
-    <link rel="stylesheet" href="style.css">
-    
-    <!-- Load Tailwind CSS for utility classes -->
+    <title>Backyard Hoopz 3D</title>
+    <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Load Font Awesome for icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- Load Three.js (3D Rendering) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Load Cannon.js (3D Physics Engine) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+    <style>
+        :root {
+            --neon-pink: #ff00ff;
+            --neon-blue: #00ffff;
+            --dark-bg: #121212;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--dark-bg);
+            color: white;
+            margin: 0;
+            overflow: hidden;
+        }
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .ui-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Allows clicks to pass through to the canvas by default */
+        }
+        /* New class for OPAQUE, centered menus */
+        .ui-menu {
+            pointer-events: auto; /* Re-enables pointer events for interactive elements */
+            background: rgba(18, 18, 18, 0.95); /* Opaque background */
+            backdrop-filter: blur(5px);
+            max-width: 90%;
+            max-height: 90%;
+            overflow-y: auto;
+            border-radius: 1rem;
+            border: 2px solid var(--neon-pink);
+            box-shadow: 0 0 20px rgba(255, 0, 255, 0.5);
+            transition: opacity 0.3s ease-in-out;
+            z-index: 100;
+        }
+        /* Class for the Game screen, which is a transparent overlay */
+        .ui-game-overlay {
+            pointer-events: none; /* Default: Clicks pass through to canvas */
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 90;
+        }
+        .ui-game-overlay .interactive {
+             pointer-events: auto; /* Re-enable pointer events for buttons/HUD */
+        }
+        .neon-button {
+            transition: all 0.1s ease;
+            text-shadow: 0 0 5px white, 0 0 10px var(--neon-blue);
+            box-shadow: 0 0 10px var(--neon-blue);
+            border: 1px solid var(--neon-blue);
+            background-color: rgba(0, 255, 255, 0.1);
+        }
+        .neon-button:hover {
+            text-shadow: 0 0 8px white, 0 0 15px var(--neon-pink);
+            box-shadow: 0 0 15px var(--neon-pink);
+            border-color: var(--neon-pink);
+            background-color: rgba(255, 0, 255, 0.2);
+        }
+        .neon-text-pink {
+            color: var(--neon-pink);
+            text-shadow: 0 0 5px var(--neon-pink);
+        }
+        .neon-text-blue {
+            color: var(--neon-blue);
+            text-shadow: 0 0 5px var(--neon-blue);
+        }
+        .neon-border-pink {
+            border-color: var(--neon-pink);
+            box-shadow: 0 0 10px var(--neon-pink);
+        }
+        .hidden {
+            display: none !important;
+        }
+
+        /* Loading Indicator */
+        #loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+        }
+        .spinner {
+            border: 8px solid rgba(255, 255, 255, 0.1);
+            border-top: 8px solid var(--neon-blue);
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Custom Modal */
+        #message-modal {
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 500;
+        }
+        #message-box {
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            background-color: var(--dark-bg);
+            border-width: 2px;
+            text-align: center;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 15px var(--neon-pink); }
+            100% { box-shadow: 0 0 30px var(--neon-pink); }
+        }
+    </style>
 </head>
 <body>
-    <!-- Main Menu Screen (Full Screen Layout) -->
-    <div class="main-menu-container" id="main-menu-container">
-        <h1 class="main-title">THE G.O.A.T. PROJECT</h1>
-        
-        <!-- User Info Display -->
-        <div id="user-info" class="absolute top-2 right-4 text-xs sm:text-sm text-neon-blue text-center"></div>
-
-        <!-- Menu Bar (Fixed to bottom) -->
-        <div class="menu-bar">
-            <button class="menu-button" onclick="quickPlay()">QUICK PLAY</button>
-            <button class="menu-button" onclick="loadMissions()">MISSIONS</button>
-            <button class="menu-button" onclick="loadMyHub()">MY HUB</button>
-            <button class="menu-button" onclick="loadOptions()">OPTIONS</button>
-            <button class="menu-button" onclick="quitGame()">QUIT</button>
-        </div>
+    <div id="game-container">
+        <!-- Three.js Canvas will be appended here -->
     </div>
 
-    <!-- QUICK PLAY GAME SCREEN (2D Hoops) -->
-    <div id="quick-play-game-screen" class="mission-screen hidden">
-        <h2 class="mb-4 text-center">BACKYARD HOOPZ - QUICK PLAY</h2>
+    <!-- UI Overlay -->
+    <div class="ui-container flex justify-center items-center">
+        <!-- Global Info -->
+        <div class="absolute top-4 left-4 text-xs">
+            <div id="user-info" class="neon-text-blue">Loading User...</div>
+            <div id="high-score-display" class="neon-text-pink">BEST: 0</div>
+            <div id="shots-fired" class="neon-text-pink">SHOTS: 0</div>
+        </div>
         
-        <div class="w-full flex flex-col items-center">
-            <canvas id="game-canvas" width="760" height="480"></canvas>
-            
-            <div class="control-bar flex justify-between w-full p-3 rounded-xl border border-neon-pink shadow-lg shadow-pink-500/20">
-                <div id="score-display" class="text-lg font-bold text-neon-blue">SCORE: 0</div>
-                <div id="high-score-display" class="text-lg font-bold text-neon-pink">BEST: 0</div>
-                <div id="shots-fired" class="text-lg font-bold text-neon-blue">SHOTS: 0</div>
+        <!-- Score Display -->
+        <div class="absolute top-4 right-4 text-xl font-bold p-2 px-4 rounded-full neon-text-pink border-2 border-neon-pink">
+            SCORE: <span id="score-display">0</span>
+        </div>
+
+        <!-- Main Menu Screen (Visible on start) -->
+        <div id="main-menu-container" class="ui-menu w-full md:w-96 p-8 text-center flex flex-col space-y-4">
+            <h1 class="text-4xl font-extrabold mb-6 neon-text-blue">BACKYARD HOOPZ 3D</h1>
+            <button class="neon-button text-lg p-3 w-full rounded-lg" onclick="quickPlay()">QUICK PLAY (3D)</button>
+            <button class="neon-button text-lg p-3 w-full rounded-lg" onclick="loadMissions()">MISSIONS</button>
+            <button class="neon-button text-lg p-3 w-full rounded-lg" onclick="loadMyHub()">MY HUB</button>
+            <button class="neon-button text-lg p-3 w-full rounded-lg" onclick="loadOptions()">OPTIONS</button>
+            <button class="neon-button text-lg p-3 w-full rounded-lg text-red-400" onclick="quitGame()">QUIT</button>
+        </div>
+
+        <!-- Quick Play Screen (Hidden by default) -->
+        <!-- CHANGED CLASS: Now ui-game-overlay (transparent) -->
+        <div id="quick-play-game-screen" class="ui-game-overlay hidden">
+            <div class="interactive absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-4">
+                <button class="neon-button text-sm p-3 rounded-lg" onclick="resetGame(true)">RESTART GAME</button>
+                <button class="neon-button text-sm p-3 rounded-lg" onclick="showMainMenu()">BACK TO MENU</button>
             </div>
+            <!-- Instructions for 3D game -->
+            <div class="interactive absolute top-20 left-1/2 transform -translate-x-1/2 p-2 bg-gray-900 bg-opacity-70 rounded neon-text-blue text-sm">
+                DRAG & RELEASE on the screen to launch the ball!
+            </div>
+        </div>
 
-            <p id="game-message" class="text-center mt-4 text-lg font-bold text-neon-pink">Click & drag to shoot!</p>
-            
-            <!-- START OF NEW BUTTON CONTAINER: EXIT GAME (Left) and START GAME (Middle) -->
-            <div class="w-full flex justify-center mt-6">
-                <!-- Inner flex container to space the two buttons -->
-                <div class="flex justify-around w-full max-w-lg gap-8">
-                    <!-- 1. EXIT GAME (Left) -->
-                    <button class="menu-button text-center w-auto px-4 py-2" onclick="showMainMenu()">
-                        <i class="fas fa-arrow-left mr-2"></i>EXIT GAME
-                    </button>
+        <!-- My Hub Screen -->
+        <div id="my-hub-screen" class="ui-menu hidden w-full md:w-96 p-8 text-center flex flex-col space-y-4">
+            <h2 class="text-3xl font-bold mb-4 neon-text-pink">MY HUB</h2>
+            <p class="neon-text-blue text-sm">Player ID: <span id="player-id-display">Guest</span></p>
+            <button class="neon-button text-lg p-3 w-full rounded-lg" onclick="loadMyStats()">VIEW STATS</button>
+            <button class="neon-button text-lg p-3 w-full rounded-lg" onclick="loadMissions()">MISSION CONTROL</button>
+            <button class="neon-button text-lg p-3 w-full rounded-lg mt-6" onclick="showMainMenu()">MAIN MENU</button>
+        </div>
 
-                    <!-- 2. START GAME (Middle) - Calls resetGame() to clear score and put the ball back -->
-                    <button class="skill-button text-center w-auto px-6 py-2" onclick="resetGame()">
-                        <i class="fas fa-play mr-2"></i>START GAME
-                    </button>
+        <!-- My Stats Screen -->
+        <div id="my-stats-screen" class="ui-menu hidden w-full md:w-96 p-8 text-center flex flex-col space-y-4">
+            <h2 class="text-3xl font-bold mb-4 neon-text-blue">MY STATS</h2>
+            <div class="text-left space-y-2">
+                <p class="text-xl neon-text-pink">Overall Rating: <span id="stats-overall-rating">75</span></p>
+                <p class="text-xl neon-text-blue">High Score: <span id="stats-high-score">0</span></p>
+            </div>
+            <div class="mt-4">
+                <h3 class="text-xl neon-text-pink mb-2">SEASON PROGRESS</h3>
+                <div class="w-full bg-gray-700 rounded-full h-3">
+                    <div id="mission-progress-bar" class="bg-gradient-to-r from-neon-blue to-neon-pink h-3 rounded-full" style="width: 0%"></div>
                 </div>
             </div>
-            <!-- END OF NEW BUTTON CONTAINER -->
-
-        </div>
-    </div>
-
-    <!-- MISSIONS LOG SCREEN -->
-    <div class="missions-log-container hidden" id="missions-screen">
-        <h2>MISSIONS LOG</h2>
-        <button class="mission-item" id="mission-1-button" onclick="startMission(1)">1. The Jump Start (AVAILABLE)</button>
-        <button class="mission-item" id="mission-2-button" onclick="startMission(2)">2. The Rookie Contract (LOCKED)</button>
-        
-        <p class="text-gray-400 mt-6">More missions coming soon...</p>
-
-        <button class="neon-btn mt-8" onclick="showMainMenu()">BACK TO MAIN</button>
-    </div>
-
-    <!-- MY HUB SCREEN -->
-    <div class="my-player-container hidden" id="my-hub-screen">
-        <h2>MY HUB</h2>
-        <button class="menu-button" onclick="loadMyStats()">PLAYER STATS</button>
-        <button class="menu-button" onclick="loadTraining()">TRAINING FACILITY</button>
-        <button class="menu-button" onclick="showMessageBox('Ranks and Leaderboards coming soon!')">LEADERBOARDS</button>
-        
-        <button class="neon-btn mt-8" onclick="showMainMenu()">BACK TO HUB</button>
-    </div>
-
-    <!-- MY STATS SCREEN -->
-    <div class="my-player-container hidden" id="my-stats-screen">
-        <h2>PLAYER STATS</h2>
-        <p>Overall Rating: <span id="stats-overall-rating" class="text-neon-pink text-2xl font-bold">75</span></p>
-        <div id="stats-current-mission"><strong>Current Mission:</strong> The Jump Start</div>
-        <div id="stats-high-score-container"><strong>Quick Play High Score:</strong> <span id="stats-high-score" class="text-neon-blue font-bold">0</span></div>
-
-        <p class="text-gray-300 text-sm mt-4">User ID: <span id="player-id-display">N/A</span></p>
-
-        <p class="mt-4">Mission Progress</p>
-        <div class="progress-bar-container">
-            <div id="mission-progress-bar" style="width: 0%;"></div>
-        </div>
-
-        <button class="neon-btn mt-8" onclick="loadMyHub()">BACK TO HUB</button>
-    </div>
-
-
-    <!-- OPTIONS SCREEN -->
-    <div class="options-container hidden" id="options-screen">
-        <h2>OPTIONS</h2>
-        <p class="text-gray-400">Settings and customization features coming soon!</p>
-        
-        <button class="neon-btn mt-8" onclick="showMainMenu()">BACK TO MAIN</button>
-    </div>
-
-    <!-- QUIT SCREEN -->
-    <div class="quit-container hidden" id="quit-screen">
-        <h2>QUIT GAME?</h2>
-        <p class="text-gray-300">Your progress is saved automatically via The G.O.A.T. Project Cloud Sync.</p>
-        
-        <button class="neon-btn mt-8" onclick="showMainMenu()">RETURN TO MAIN MENU</button>
-    </div>
-
-    <!-- MISSION 1 SCREEN (Power Meter) -->
-    <div class="mission-screen hidden" id="mission-1-screen">
-        <h2>MISSION 1: THE JUMP START</h2>
-        <p class="text-gray-300">Coach says: Hit the button when the meter reaches 95 for a perfect pass!</p>
-        
-        <div class="mission-content">
-            <h1 id="meter-display">0</h1>
-            <button class="skill-button" onclick="stopMeter()">SHOOT / PASS</button>
-        </div>
-
-        <div id="mission-feedback" class="text-xl font-bold"></div>
-
-        <button class="menu-button mt-8 w-full max-w-[200px] text-center" onclick="showMainMenu()">EXIT MISSION</button>
-    </div>
-    
-    <!-- MISSION 2 SCREEN (Rookie Contract) -->
-    <div class="mission-screen hidden" id="mission-2-screen">
-        <h2>MISSION 2: THE ROOKIE CONTRACT</h2>
-        <p class="text-gray-300">Your agent, Mr. Smith, has two contract offers for you. He asks: **Which offer do you take?**</p>
-        
-        <div class="mission-content flex flex-col items-center">
-            <!-- Updated to use contract-button class -->
-            <button class="contract-button" onclick="completeMission2(1)">Option 1: Small Bonus, High Incentives (+5 OVERALL)</button>
-            <button class="contract-button" onclick="completeMission2(0)">Option 2: Large Bonus, Low Incentives (+1 OVERALL)</button>
+            <button class="neon-button text-lg p-3 w-full rounded-lg mt-6" onclick="loadMyHub()">BACK TO HUB</button>
         </div>
         
-        <button class="menu-button mt-8 w-full max-w-[200px] text-center" onclick="showMainMenu()">EXIT MISSION</button>
-    </div>
+        <!-- Missions Screen -->
+        <div id="missions-screen" class="ui-menu hidden w-full md:w-96 p-8 text-center flex flex-col space-y-4">
+            <h2 class="text-3xl font-bold mb-4 neon-text-pink">MISSION CONTROL</h2>
+            <p class="text-sm text-gray-400">Boost your Overall Rating by completing challenges!</p>
+            <button class="neon-button text-lg p-3 w-full rounded-lg" onclick="startMission(1)">1. The Jump Start</button>
+            <button id="mission-2-button" class="neon-button text-lg p-3 w-full rounded-lg" onclick="startMission(2)" disabled>2. The Rookie Contract (LOCKED)</button>
+            <button class="neon-button text-lg p-3 w-full rounded-lg mt-6" onclick="showMainMenu()">MAIN MENU</button>
+        </div>
 
-    <!-- Custom Message Modal (Replaces alert() and confirm()) -->
-    <div id="message-modal" class="hidden" style="display: none;">
-        <div id="message-box">
-            <p id="modal-text" class="modal-text"></p>
-            <button class="neon-btn text-sm" onclick="hideMessageBox()">OK</button>
+        <!-- Mission 1 Screen -->
+        <div id="mission-1-screen" class="ui-menu hidden w-full md:w-96 p-8 text-center flex flex-col space-y-4">
+            <h2 class="text-3xl font-bold mb-4 neon-text-blue">MISSION 1: THE JUMP START</h2>
+            <p class="text-lg text-gray-300">Test your passing accuracy by hitting the meter's sweet spot!</p>
+            <div class="text-6xl font-bold my-4 neon-text-pink" id="meter-display">0</div>
+            <div class="w-full h-10 bg-gray-700 relative rounded-full">
+                <!-- Sweet Spot Indicator -->
+                <div class="absolute inset-y-0 left-[80%] w-[10%] bg-green-500 opacity-50"></div>
+                <!-- Meter Pointer -->
+                <div id="meter-pointer" class="absolute h-full w-2 bg-white rounded-full transition-all duration-200" style="left: 0%"></div>
+            </div>
+            <button class="neon-button text-lg p-3 w-full rounded-lg" onclick="stopMeter()">STOP METER</button>
+            <p id="mission-feedback" class="text-xl font-bold mt-4"></p>
+            <button class="neon-button text-sm p-3 w-full rounded-lg mt-6" onclick="loadMissions()">BACK TO MISSIONS</button>
+        </div>
+
+        <!-- Mission 2 Screen -->
+        <div id="mission-2-screen" class="ui-menu hidden w-full md:w-96 p-8 text-center flex flex-col space-y-4">
+            <h2 class="text-3xl font-bold mb-4 neon-text-pink">MISSION 2: THE ROOKIE CONTRACT</h2>
+            <p class="text-lg text-gray-300">Choose your contract deal:</p>
+            <button class="neon-button text-lg p-3 w-full rounded-lg" onclick="completeMission2(1)">OPTION A: Small Bonus, High Incentives (+5 Overall)</button>
+            <button class="neon-button text-lg p-3 w-full rounded-lg" onclick="completeMission2(2)">OPTION B: Large Bonus, Low Incentives (+1 Overall)</button>
+            <button class="neon-button text-sm p-3 w-full rounded-lg mt-6" onclick="loadMissions()">BACK TO MISSIONS</button>
+        </div>
+
+        <!-- Options Screen -->
+        <div id="options-screen" class="ui-menu hidden w-full md:w-96 p-8 text-center flex flex-col space-y-4">
+            <h2 class="text-3xl font-bold mb-4 neon-text-blue">OPTIONS</h2>
+            <p class="text-sm text-gray-400">Settings coming soon...</p>
+            <button class="neon-button text-lg p-3 w-full rounded-lg mt-6" onclick="showMainMenu()">MAIN MENU</button>
+        </div>
+
+        <!-- Quit Screen -->
+        <div id="quit-screen" class="ui-menu hidden w-full md:w-96 p-8 text-center flex flex-col space-y-4">
+            <h2 class="text-3xl font-bold mb-4 neon-text-pink">GAME OVER</h2>
+            <p class="text-lg text-gray-300">Thanks for playing Backyard Hoopz 3D!</p>
+            <button class="neon-button text-lg p-3 w-full rounded-lg mt-6" onclick="showMainMenu()">MAIN MENU</button>
         </div>
     </div>
     
-    <!-- Link to the external JavaScript file (script.js) -->
-    <script type="module" src="script.js"></script>
+    <!-- Custom Modal for Alerts (No alert() allowed) -->
+    <div id="message-modal" class="hidden fixed inset-0 flex justify-center items-center">
+        <div id="message-box" class="neon-border-pink shadow-pink-500/70">
+            <p id="modal-text" class="text-xl font-bold"></p>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay">
+        <div class="text-center">
+            <div class="spinner mb-4"></div>
+            <p class="text-lg neon-text-blue">LOADING 3D COURT...</p>
+        </div>
+    </div>
+
+    <script type="module">
+        // --- FIREBASE IMPORTS ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { 
+            getAuth, 
+            signInAnonymously, 
+            signInWithCustomToken, 
+            onAuthStateChanged,
+            setPersistence,
+            browserLocalPersistence
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { 
+            getFirestore, 
+            doc, 
+            setDoc, 
+            onSnapshot, 
+            setLogLevel
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- GLOBAL FIREBASE & GAME STATE ---
+
+        // IMPORTANT: Global variables provided by the Canvas environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let app;
+        let db;
+        let auth;
+        let userId = null;
+        let isAuthReady = false;
+        let isLoading = true;
+
+        // Player Data State (Local)
+        let playerData = {
+            overallRating: 75,
+            highScore: 0,
+            currentMission: 1, 
+            missions: {
+                1: { completed: false, value: 0 },
+                2: { completed: false, value: 0 }
+            }
+        };
+
+        // Quick Play Game State
+        let gameScore = 0;
+        let shotsFired = 0;
+        let isGameRunning = false;
+        
+        let dragStart = { x: 0, y: 0 };
+        let isDragging = false;
+        
+        // --- THREE.JS GLOBALS ---
+        let scene, camera, renderer, container;
+        let ballMesh, hoopGroup, rimMesh, backboardMesh;
+        let isCameraMoving = false;
+        let currentCameraPos = new THREE.Vector3(0, 1.5, 5); // Start position
+        let targetCameraPos = new THREE.Vector3(0, 1.5, 5); // Target position for animation
+        const CAMERA_Y = 1.5;
+
+        // --- CANNON.JS GLOBALS ---
+        const TIME_STEP = 1 / 60;
+        let world;
+        let ballBody, groundBody;
+        const BALL_RADIUS = 0.2;
+        const BALL_MASS = 1;
+        const HOOP_Z = -5; // Z position of the backboard
+        const HOOP_HEIGHT = 3.05; // Standard hoop height (meters)
+        
+        // Custom Materials
+        const ballMaterial = new CANNON.Material();
+        const groundMaterial = new CANNON.Material();
+        const rimMaterial = new CANNON.Material();
+        
+        const ballGroundContact = new CANNON.ContactMaterial(ballMaterial, groundMaterial, {
+            friction: 0.8,
+            restitution: 0.6 // Bounciness
+        });
+        
+        const ballRimContact = new CANNON.ContactMaterial(ballMaterial, rimMaterial, {
+            friction: 0.3,
+            restitution: 0.3
+        });
+        
+        let ballState = 'ready'; // 'ready', 'flying', 'scored', 'resetting'
+        let scoreFlag = false; // Prevents scoring multiple times per shot
+        
+        // --- 3D SETUP & GAME INITIALIZATION ---
+
+        function setup3D() {
+            container = document.getElementById('game-container');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            // 1. Scene and Camera
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x121212); // Dark background
+            camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+            camera.position.set(currentCameraPos.x, currentCameraPos.y, currentCameraPos.z);
+            camera.lookAt(0, HOOP_HEIGHT, HOOP_Z); // Always look at the hoop rim
+
+            // 2. Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(width, height);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            container.appendChild(renderer.domElement);
+            
+            // 3. Physics World (Cannon.js)
+            world = new CANNON.World();
+            world.gravity.set(0, -9.82, 0); // Standard gravity
+            world.broadphase = new CANNON.NaiveBroadphase();
+            world.solver.iterations = 10;
+            
+            // Add contact materials
+            world.addContactMaterial(ballGroundContact);
+            world.addContactMaterial(ballRimContact);
+            
+            // 4. Lights (Neon Style)
+            const ambient = new THREE.AmbientLight(0x404040); // Soft white light
+            scene.add(ambient);
+            
+            // Spotlights for neon effect
+            const spotLightBlue = new THREE.SpotLight(0x00ffff, 20, 10, Math.PI / 4, 0.5, 2);
+            spotLightBlue.position.set(-5, 5, 0);
+            spotLightBlue.target.position.set(0, HOOP_HEIGHT, HOOP_Z);
+            scene.add(spotLightBlue);
+            scene.add(spotLightBlue.target);
+
+            const spotLightPink = new THREE.SpotLight(0xff00ff, 20, 10, Math.PI / 4, 0.5, 2);
+            spotLightPink.position.set(5, 5, 0);
+            spotLightPink.target.position.set(0, HOOP_HEIGHT, HOOP_Z);
+            scene.add(spotLightPink);
+            scene.add(spotLightPink.target);
+            
+            // 5. Game Objects
+            createCourt();
+            createHoop();
+            createBall();
+            
+            // 6. Event Listeners
+            window.addEventListener('resize', onWindowResize, false);
+            renderer.domElement.addEventListener('mousedown', handleStart3D);
+            renderer.domElement.addEventListener('mouseup', handleEnd3D);
+            renderer.domElement.addEventListener('mousemove', handleMove3D);
+
+            renderer.domElement.addEventListener('touchstart', handleStart3D);
+            renderer.domElement.addEventListener('touchend', handleEnd3D);
+            renderer.domElement.addEventListener('touchmove', handleMove3D);
+
+            // Start the animation loop
+            animateLoop();
+        }
+        
+        function onWindowResize() {
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+        }
+        
+        function createCourt() {
+            // Ground (Three.js Mesh)
+            const groundGeometry = new THREE.BoxGeometry(20, 0.1, 20);
+            const groundMaterialMesh = new THREE.MeshPhongMaterial({ color: 0x333333, shininess: 10 });
+            const groundMesh = new THREE.Mesh(groundGeometry, groundMaterialMesh);
+            scene.add(groundMesh);
+            groundMesh.position.y = -0.05; // Set it just below y=0
+
+            // Ground (Cannon.js Body)
+            const groundShape = new CANNON.Box(new CANNON.Vec3(10, 0.05, 10));
+            groundBody = new CANNON.Body({ mass: 0, material: groundMaterial });
+            groundBody.addShape(groundShape);
+            groundBody.position.y = -0.05;
+            world.addBody(groundBody);
+        }
+
+        function createHoop() {
+            hoopGroup = new THREE.Group();
+            
+            // Backboard (Neon Pink)
+            const backboardGeometry = new THREE.BoxGeometry(1.8, 1.0, 0.05); // Standard backboard size
+            const backboardMaterialMesh = new THREE.MeshPhongMaterial({ 
+                color: 0xff00ff, 
+                emissive: 0xff00ff, 
+                emissiveIntensity: 0.5 
+            });
+            backboardMesh = new THREE.Mesh(backboardGeometry, backboardMaterialMesh);
+            backboardMesh.position.set(0, HOOP_HEIGHT + 0.5, HOOP_Z);
+            hoopGroup.add(backboardMesh);
+
+            // Rim (Neon Blue - The scoring target)
+            const rimRadius = 0.23;
+            const rimGeometry = new THREE.TorusGeometry(rimRadius, 0.02, 16, 100);
+            const rimMaterialMesh = new THREE.MeshPhongMaterial({ 
+                color: 0x00ffff, 
+                emissive: 0x00ffff, 
+                emissiveIntensity: 0.7 
+            });
+            rimMesh = new THREE.Mesh(rimGeometry, rimMaterialMesh);
+            rimMesh.rotation.x = Math.PI / 2; // Rotate to be horizontal
+            rimMesh.position.set(0, HOOP_HEIGHT, HOOP_Z);
+            hoopGroup.add(rimMesh);
+            
+            // Add a simple pole (not essential for game, but for visual)
+            const poleGeometry = new THREE.CylinderGeometry(0.1, 0.1, 8, 32);
+            const poleMaterialMesh = new THREE.MeshPhongMaterial({ color: 0x444444 });
+            const poleMesh = new THREE.Mesh(poleGeometry, poleMaterialMesh);
+            poleMesh.position.set(0, 4 / 2, HOOP_Z);
+            hoopGroup.add(poleMesh);
+            
+            scene.add(hoopGroup);
+
+            // Cannon.js Rim/Backboard Shapes (simple boxes for collision)
+            
+            // Backboard body
+            const backboardShape = new CANNON.Box(new CANNON.Vec3(0.9, 0.5, 0.025));
+            const backboardBody = new CANNON.Body({ mass: 0, material: rimMaterial });
+            backboardBody.addShape(backboardShape);
+            backboardBody.position.set(0, HOOP_HEIGHT + 0.5, HOOP_Z);
+            world.addBody(backboardBody);
+
+            // Rim Body (Simulate rim as a static cylinder)
+            const rimShape = new CANNON.Cylinder(rimRadius, rimRadius, 0.05, 16);
+            const rimBody = new CANNON.Body({ mass: 0, material: rimMaterial });
+            rimBody.addShape(rimShape);
+            // Rotate shape to be horizontal
+            rimBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2); 
+            rimBody.position.set(0, HOOP_HEIGHT, HOOP_Z);
+            world.addBody(rimBody);
+        }
+        
+        function createBall() {
+            // Three.js Mesh
+            const ballGeometry = new THREE.SphereGeometry(BALL_RADIUS, 32, 32);
+            const ballMaterialMesh = new THREE.MeshPhongMaterial({ color: 0xff8c00 }); // Basketball orange
+            ballMesh = new THREE.Mesh(ballGeometry, ballMaterialMesh);
+            scene.add(ballMesh);
+            
+            // Cannon.js Body
+            const ballShape = new CANNON.Sphere(BALL_RADIUS);
+            ballBody = new CANNON.Body({ mass: BALL_MASS, material: ballMaterial });
+            ballBody.addShape(ballShape);
+            
+            resetBallPosition(); // Initial placement
+            world.addBody(ballBody);
+        }
+        
+        function resetBallPosition() {
+            const startX = 0;
+            const startY = 1.2;
+            const startZ = 2;
+            
+            ballBody.position.set(startX, startY, startZ);
+            ballBody.velocity.set(0, 0, 0);
+            ballBody.angularVelocity.set(0, 0, 0);
+            ballBody.quaternion.set(0, 0, 0, 1);
+            ballMesh.position.copy(ballBody.position);
+            
+            ballState = 'ready';
+            scoreFlag = false;
+        }
+
+        // --- INPUT HANDLERS (Converting 2D Drag to 3D Force) ---
+
+        function getTouchPos(e) {
+             const rect = renderer.domElement.getBoundingClientRect();
+             let x, y;
+             if (e.touches && e.touches.length > 0) {
+                 x = e.touches[0].clientX - rect.left;
+                 y = e.touches[0].clientY - rect.top;
+             } else {
+                 x = e.clientX - rect.left;
+                 y = e.clientY - rect.top;
+             }
+             return { x, y };
+        }
+        
+        function handleStart3D(e) {
+            if (ballState !== 'ready') return;
+
+            const pos = getTouchPos(e);
+            dragStart = pos;
+            isDragging = true;
+            e.preventDefault();
+        }
+
+        function handleMove3D(e) {
+            if (!isDragging || ballState !== 'ready') return;
+            e.preventDefault();
+            // Optional: Provide visual feedback on drag (e.g., a line mesh)
+        }
+        
+        function handleEnd3D(e) {
+            if (!isDragging || ballState !== 'ready') return;
+            isDragging = false;
+            
+            const dragEnd = getTouchPos(e);
+
+            // Calculate 2D delta (screen space)
+            const dx = dragStart.x - dragEnd.x;
+            const dy = dragStart.y - dragEnd.y;
+            
+            // Scale and map to 3D force vector (World Space)
+            // dx -> X velocity (side to side)
+            const forceX = dx * 0.05;
+            
+            // Vertical force (Y) - inverted because screen Y is down
+            const forceY = dy * 0.08; 
+            
+            // Forward force (Z) - determines distance
+            const forceZ = -dy * 0.1; 
+            
+            // Apply the impulse to the ball body
+            const launchForce = new CANNON.Vec3(forceX, forceY, forceZ);
+            const worldPoint = ballBody.position;
+            ballBody.applyImpulse(launchForce, worldPoint);
+
+            ballState = 'flying';
+            shotsFired++;
+            updateUI(); // Update shots fired UI
+            e.preventDefault();
+        }
+
+        // --- GAME LOOP & PHYSICS UPDATE ---
+
+        function animateLoop() {
+            requestAnimationFrame(animateLoop);
+            
+            world.step(TIME_STEP); // Update physics world
+            
+            // Update mesh position and rotation from physics body
+            ballMesh.position.copy(ballBody.position);
+            ballMesh.quaternion.copy(ballBody.quaternion);
+            
+            // Update camera position smoothly
+            if (isCameraMoving) {
+                camera.position.lerp(targetCameraPos, 0.05);
+                camera.lookAt(0, HOOP_HEIGHT, HOOP_Z);
+                if (camera.position.distanceTo(targetCameraPos) < 0.01) {
+                    isCameraMoving = false;
+                }
+            }
+            
+            // Check for scoring and ball state
+            updateGameLogic();
+            
+            renderer.render(scene, camera);
+        }
+
+        function updateGameLogic() {
+            if (ballState === 'flying') {
+                const ballPos = ballBody.position;
+                const rimY = HOOP_HEIGHT;
+                const rimZ = HOOP_Z;
+                const rimXMin = -0.23;
+                const rimXMax = 0.23;
+
+                // 1. Scoring Check: Pass through the rim plane from positive Z to negative Z
+                if (ballPos.z > rimZ - 0.1 && ballPos.z < rimZ + 0.1 && 
+                    ballBody.velocity.z < -0.1 && !scoreFlag &&
+                    ballPos.y < rimY + BALL_RADIUS / 2 && ballPos.y > rimY - 0.2 &&
+                    ballPos.x > rimXMin && ballPos.x < rimXMax) {
+                    
+                    // SWISH! Scored.
+                    gameScore += 2;
+                    scoreFlag = true;
+                    updateUI();
+                    
+                    if (gameScore > playerData.highScore) {
+                        playerData.highScore = gameScore;
+                        savePlayerData(); 
+                        showMessageBox(`NEW HIGH SCORE! ${playerData.highScore} points!`, 'neon-pink');
+                    } else {
+                        showMessageBox("Swish! 2 Points!", 'neon-blue');
+                    }
+                    
+                    // Transition to resetting
+                    ballState = 'scored';
+                    setTimeout(() => {
+                        resetGame(false);
+                        isCameraMoving = true;
+                        targetCameraPos.set(0, CAMERA_Y, 5); // Return to initial view
+                    }, 2000);
+                }
+
+                // 2. Out of bounds/settled check
+                // If ball falls below ground or stops moving, reset
+                if (ballPos.y < -1 || 
+                    (ballPos.z < rimZ - 1 && ballBody.velocity.length() < 0.1)) {
+                    
+                    // Missed the shot and settled
+                    setTimeout(() => {
+                        resetGame(false);
+                        isCameraMoving = true;
+                        targetCameraPos.set(0, CAMERA_Y, 5); // Return to initial view
+                    }, 1500);
+                }
+            }
+        }
+        
+        // --- FIREBASE INITIALIZATION & AUTHENTICATION (Integrated from script.js) ---
+
+        async function initApp() {
+            try {
+                // Set Firebase logging level to Debug for visibility
+                setLogLevel('debug');
+
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                // Use local persistence to maintain user state
+                await setPersistence(auth, browserLocalPersistence);
+
+                // Sign in using the custom token if provided, otherwise sign in anonymously
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                // Auth state change listener
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        isAuthReady = true;
+                        setupDataListener();
+                    } else {
+                        userId = 'guest-' + crypto.randomUUID(); 
+                        isAuthReady = true;
+                        updateUI();
+                    }
+                    isLoading = false;
+                    document.getElementById('loading-overlay').classList.add('hidden');
+                    showMainMenu();
+                });
+
+            } catch (e) {
+                console.error("Firebase Initialization Error:", e);
+                isLoading = false;
+                document.getElementById('loading-overlay').classList.add('hidden');
+                userId = 'guest-fail';
+                isAuthReady = true;
+                updateUI();
+                showMainMenu();
+            }
+        }
+
+        // --- FIRESTORE DATA HANDLING ---
+
+        function getPlayerDocRef() {
+            if (!db || !userId) return null;
+            return doc(db, 'artifacts', appId, 'users', userId, 'playerData', 'stats');
+        }
+
+        function setupDataListener() {
+            const docRef = getPlayerDocRef();
+            if (!docRef) return;
+
+            onSnapshot(docRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    playerData = { ...playerData, ...data };
+                } else {
+                    savePlayerData();
+                }
+                updateUI();
+            }, (error) => {
+                console.error("Firestore real-time listener error:", error);
+            });
+        }
+
+        async function savePlayerData() {
+            if (!isAuthReady || !userId) return;
+            const docRef = getPlayerDocRef();
+            if (!docRef) return;
+
+            try {
+                await setDoc(docRef, playerData, { merge: true });
+            } catch (e) {
+                console.error("Error saving player data:", e);
+            }
+        }
+
+        // --- UI AND SCREEN MANAGEMENT ---
+
+        function updateUI() {
+            if (isLoading || !isAuthReady) return; 
+
+            const safeSetText = (id, text) => {
+                const element = document.getElementById(id);
+                if (element) element.textContent = text;
+            };
+
+            // MANDATORY: Show full User ID
+            safeSetText('user-info', `USER ID: ${userId || 'Guest'}`);
+            safeSetText('player-id-display', userId || 'Guest');
+            
+            safeSetText('stats-overall-rating', playerData.overallRating);
+            safeSetText('stats-high-score', playerData.highScore);
+            safeSetText('high-score-display', `BEST: ${playerData.highScore}`);
+            safeSetText('score-display', gameScore);
+            safeSetText('shots-fired', `SHOTS: ${shotsFired}`);
+            
+            // Progress Bar
+            const progressBar = document.getElementById('mission-progress-bar');
+            if (progressBar) {
+                const progressPercent = Math.min(100, (playerData.overallRating - 75) * 4); 
+                progressBar.style.width = `${progressPercent}%`;
+            }
+
+            // Mission 2 Button
+            const mission2Button = document.getElementById('mission-2-button');
+            if (mission2Button) {
+                mission2Button.textContent = playerData.missions[1].completed 
+                    ? '2. The Rookie Contract (AVAILABLE)' 
+                    : '2. The Rookie Contract (LOCKED)';
+                mission2Button.disabled = !playerData.missions[1].completed;
+            }
+        }
+
+        function showScreen(screenId) {
+            const menuScreens = [
+                'main-menu-container', 'missions-screen', 'my-hub-screen', 
+                'my-stats-screen', 'options-screen', 'quit-screen', 
+                'mission-1-screen', 'mission-2-screen'
+            ];
+            
+            const gameScreen = document.getElementById('quick-play-game-screen');
+            
+            // 1. Hide/Show Opaque Menus
+            menuScreens.forEach(id => {
+                const screen = document.getElementById(id);
+                if (screen) {
+                    if (id === screenId) {
+                        screen.classList.remove('hidden');
+                        document.getElementById('game-container').style.pointerEvents = 'none'; // Lock 3D interaction
+                    } else {
+                        screen.classList.add('hidden');
+                        if (id.includes('mission-1')) clearInterval(missionMeterInterval);
+                    }
+                }
+            });
+            
+            // 2. Manage the Game Overlay (which is transparent)
+            if (gameScreen) {
+                if (screenId === 'quick-play-game-screen') {
+                    gameScreen.classList.remove('hidden');
+                    document.getElementById('game-container').style.pointerEvents = 'auto'; // Unlock 3D interaction
+                    isGameRunning = true;
+                } else {
+                    gameScreen.classList.add('hidden');
+                    isGameRunning = false;
+                }
+            }
+        }
+
+        // Menu Functions
+        window.showMainMenu = function() {
+            showScreen('main-menu-container');
+            isGameRunning = false;
+        }
+
+        window.quickPlay = function() {
+            showScreen('quick-play-game-screen');
+            isGameRunning = true;
+            resetGame(true);
+            isCameraMoving = true;
+            targetCameraPos.set(0, CAMERA_Y, 5); // Set camera to starting position
+        }
+
+        window.loadMissions = function() {
+            showScreen('missions-screen');
+        }
+
+        window.loadMyHub = function() {
+            showScreen('my-hub-screen');
+            updateUI();
+        }
+
+        window.loadMyStats = function() {
+            showScreen('my-stats-screen');
+            updateUI();
+        }
+
+        window.loadOptions = function() {
+            showScreen('options-screen');
+        }
+
+        window.quitGame = function() {
+            showScreen('quit-screen');
+        }
+
+        // --- QUICK PLAY (3D) LOGIC ---
+        
+        window.resetGame = function(fullReset = true) {
+            resetBallPosition();
+
+            if (fullReset) {
+                gameScore = 0;
+                shotsFired = 0;
+            }
+            updateUI();
+        }
+
+        // --- MISSION LOGIC ---
+
+        let missionMeterInterval = null;
+        let missionMeterValue = 0;
+        let meterDirection = 1;
+
+        window.startMission = function(missionId) {
+            if (missionId === 1) {
+                showScreen('mission-1-screen');
+                missionMeterValue = 0;
+                meterDirection = 1;
+                
+                const meterDisplay = document.getElementById('meter-display');
+                const feedback = document.getElementById('mission-feedback');
+                if(meterDisplay) meterDisplay.textContent = '0';
+                if(feedback) feedback.textContent = '';
+                
+                // Start meter animation
+                if (missionMeterInterval) clearInterval(missionMeterInterval);
+                missionMeterInterval = setInterval(updateMissionMeter, 20);
+            } else if (missionId === 2) {
+                if (!playerData.missions[1].completed) {
+                    showMessageBox("Mission 2 is LOCKED. Complete Mission 1 first!", 'neon-pink');
+                    return;
+                }
+                showScreen('mission-2-screen');
+            }
+        }
+
+        function updateMissionMeter() {
+            missionMeterValue += meterDirection;
+            
+            if (missionMeterValue >= 100) {
+                meterDirection = -1;
+                missionMeterValue = 100;
+            } else if (missionMeterValue <= 0) {
+                meterDirection = 1;
+                missionMeterValue = 0;
+            }
+            
+            const meterDisplay = document.getElementById('meter-display');
+            const meterPointer = document.getElementById('meter-pointer');
+            if (meterDisplay) meterDisplay.textContent = missionMeterValue;
+            if (meterPointer) meterPointer.style.left = `${missionMeterValue}%`;
+        }
+
+        window.stopMeter = function() {
+            if (missionMeterInterval) {
+                clearInterval(missionMeterInterval);
+                missionMeterInterval = null;
+            }
+            
+            const feedback = document.getElementById('mission-feedback');
+            if (!feedback) return;
+            
+            let score = 0;
+            // Sweet spot: 80-100
+            if (missionMeterValue >= 80 && missionMeterValue <= 100) {
+                score = 100;
+                feedback.textContent = 'PERFECT PASS! (+5 Overall)';
+                feedback.classList.remove('text-red-500', 'text-neon-pink');
+                feedback.classList.add('text-neon-blue');
+                playerData.overallRating += 5;
+            } else if (missionMeterValue >= 60 || missionMeterValue <= 20) {
+                score = 50;
+                feedback.textContent = 'GOOD! (+2 Overall)';
+                feedback.classList.remove('text-red-500', 'text-neon-blue');
+                feedback.classList.add('text-neon-pink');
+                playerData.overallRating += 2;
+            } else {
+                feedback.textContent = 'MISS! (No change)';
+                feedback.classList.remove('text-neon-blue', 'text-neon-pink');
+                feedback.classList.add('text-red-500');
+            }
+
+            if (score > 0) {
+                playerData.missions[1].completed = true;
+                savePlayerData();
+                updateUI();
+            }
+        }
+
+        window.completeMission2 = function(option) {
+            let resultMessage = '';
+            
+            if (option === 1) {
+                playerData.overallRating += 5;
+                resultMessage = "Smart choice! You earned a +5 OVERALL boost from your incentives!";
+            } else {
+                playerData.overallRating += 1;
+                resultMessage = "A safe choice. You earned a +1 OVERALL boost.";
+            }
+
+            playerData.missions[2].completed = true;
+            savePlayerData();
+            updateUI();
+            showMessageBox(resultMessage, 'neon-blue');
+            showMainMenu();
+        }
+
+        // --- UTILITIES (Custom Modal) ---
+
+        let modalTimeout;
+
+        window.showMessageBox = function(message, color = 'neon-blue') {
+            const modal = document.getElementById('message-modal');
+            const box = document.getElementById('message-box');
+            const text = document.getElementById('modal-text');
+            
+            if (modal && box && text) {
+                text.textContent = message;
+                
+                box.classList.remove('shadow-pink-500/70', 'shadow-blue-500/70');
+                box.classList.remove('neon-border-pink', 'border-neon-blue');
+                
+                if (color === 'neon-pink') {
+                    box.classList.add('neon-border-pink', 'shadow-pink-500/70');
+                    box.style.animation = 'none';
+                    void box.offsetHeight; // Trigger reflow
+                    box.style.animation = 'pulse 0.8s ease-in-out infinite alternate';
+                } else {
+                    box.classList.add('border-neon-blue', 'shadow-blue-500/70');
+                    box.style.animation = 'none';
+                }
+                
+                modal.classList.remove('hidden');
+
+                clearTimeout(modalTimeout);
+                modalTimeout = setTimeout(window.hideMessageBox, 3000); 
+            }
+        }
+
+        window.hideMessageBox = function() {
+            document.getElementById('message-modal').classList.add('hidden');
+        }
+
+
+        // --- START APP ---
+        window.onload = function() {
+            setup3D(); 
+            initApp();
+        }
+    </script>
 </body>
 </html>
