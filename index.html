@@ -10,6 +10,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <!-- Load Cannon.js (3D Physics Engine) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+    
+    <!-- === START OF STYLE.CSS CONTENT === -->
     <style>
         :root {
             --neon-pink: #ff00ff;
@@ -42,12 +44,12 @@
             left: 0;
             width: 100%;
             height: 100%;
-            pointer-events: none; /* Allows clicks to pass through to the canvas by default */
+            pointer-events: none;
         }
         /* New class for OPAQUE, centered menus */
         .ui-menu {
-            pointer-events: auto; /* Re-enables pointer events for interactive elements */
-            background: rgba(18, 18, 18, 0.95); /* Opaque background */
+            pointer-events: auto;
+            background: rgba(18, 18, 18, 0.95);
             backdrop-filter: blur(5px);
             max-width: 90%;
             max-height: 90%;
@@ -60,7 +62,7 @@
         }
         /* Class for the Game screen, which is a transparent overlay */
         .ui-game-overlay {
-            pointer-events: none; /* Default: Clicks pass through to canvas */
+            pointer-events: none;
             position: absolute;
             top: 0;
             left: 0;
@@ -69,7 +71,7 @@
             z-index: 90;
         }
         .ui-game-overlay .interactive {
-             pointer-events: auto; /* Re-enable pointer events for buttons/HUD */
+             pointer-events: auto;
         }
         .neon-button {
             transition: all 0.1s ease;
@@ -143,8 +145,10 @@
             100% { box-shadow: 0 0 30px var(--neon-pink); }
         }
     </style>
+    <!-- === END OF STYLE.CSS CONTENT === -->
 </head>
 <body>
+    <!-- === START OF HTML STRUCTURE CONTENT === -->
     <div id="game-container">
         <!-- Three.js Canvas will be appended here -->
     </div>
@@ -174,7 +178,6 @@
         </div>
 
         <!-- Quick Play Screen (Hidden by default) -->
-        <!-- CHANGED CLASS: Now ui-game-overlay (transparent) -->
         <div id="quick-play-game-screen" class="ui-game-overlay hidden">
             <div class="interactive absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-4">
                 <button class="neon-button text-sm p-3 rounded-lg" onclick="resetGame(true)">RESTART GAME</button>
@@ -182,7 +185,7 @@
             </div>
             <!-- Instructions for 3D game -->
             <div class="interactive absolute top-20 left-1/2 transform -translate-x-1/2 p-2 bg-gray-900 bg-opacity-70 rounded neon-text-blue text-sm">
-                DRAG & RELEASE on the screen to launch the ball!
+                WASD to Move | SPACE to Shoot!
             </div>
         </div>
 
@@ -274,7 +277,9 @@
             <p class="text-lg neon-text-blue">LOADING 3D COURT...</p>
         </div>
     </div>
+    <!-- === END OF HTML STRUCTURE CONTENT === -->
 
+    <!-- === START OF SCRIPT.JS CONTENT (Module Type) === -->
     <script type="module">
         // --- FIREBASE IMPORTS ---
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -314,716 +319,717 @@
             highScore: 0,
             currentMission: 1, 
             missions: {
-                1: { completed: false, value: 0 },
-                2: { completed: false, value: 0 }
-            }
+                1: { completed: false, ratingBonus: 5 },
+                2: { completed: false, ratingBonus: 0 }
+            },
         };
 
-        // Quick Play Game State
-        let gameScore = 0;
+        const USER_DATA_PATH = (uid) => `artifacts/${appId}/users/${uid}/gameData/playerProfile`;
+
+        // --- THREE.JS & CANNON.JS SETUP ---
+        let scene, camera, renderer;
+        let world; // Cannon.js world
+        let basketballMesh, basketballBody;
+        let player, playerVelocity;
+        let inputState = { forward: false, backward: false, left: false, right: false, shoot: false };
+        let canShoot = true;
+        let score = 0;
         let shotsFired = 0;
-        let isGameRunning = false;
-        
-        let dragStart = { x: 0, y: 0 };
-        let isDragging = false;
-        
-        // --- THREE.JS GLOBALS ---
-        let scene, camera, renderer, container;
-        let ballMesh, hoopGroup, rimMesh, backboardMesh;
-        let isCameraMoving = false;
-        let currentCameraPos = new THREE.Vector3(0, 1.5, 5); // Start position
-        let targetCameraPos = new THREE.Vector3(0, 1.5, 5); // Target position for animation
-        const CAMERA_Y = 1.5;
+        let mission1Interval = null;
+        let meterValue = 0;
+        let meterDirection = 1;
 
-        // --- CANNON.JS GLOBALS ---
-        const TIME_STEP = 1 / 60;
-        let world;
-        let ballBody, groundBody;
-        const BALL_RADIUS = 0.2;
-        const BALL_MASS = 1;
-        const HOOP_Z = -5; // Z position of the backboard
-        const HOOP_HEIGHT = 3.05; // Standard hoop height (meters)
-        
-        // Custom Materials
-        const ballMaterial = new CANNON.Material();
-        const groundMaterial = new CANNON.Material();
-        const rimMaterial = new CANNON.Material();
-        
-        const ballGroundContact = new CANNON.ContactMaterial(ballMaterial, groundMaterial, {
-            friction: 0.8,
-            restitution: 0.6 // Bounciness
-        });
-        
-        const ballRimContact = new CANNON.ContactMaterial(ballMaterial, rimMaterial, {
-            friction: 0.3,
-            restitution: 0.3
-        });
-        
-        let ballState = 'ready'; // 'ready', 'flying', 'scored', 'resetting'
-        let scoreFlag = false; // Prevents scoring multiple times per shot
-        
-        // --- 3D SETUP & GAME INITIALIZATION ---
+        // Game Configuration
+        const PLAYER_SPEED = 5;
+        const SHOT_FORCE = 15;
+        const PLAYER_MASS = 50;
 
-        function setup3D() {
-            container = document.getElementById('game-container');
-            const width = container.clientWidth;
-            const height = container.clientHeight;
+        // --- CORE INITIALIZATION ---
 
-            // 1. Scene and Camera
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x121212); // Dark background
-            camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
-            camera.position.set(currentCameraPos.x, currentCameraPos.y, currentCameraPos.z);
-            camera.lookAt(0, HOOP_HEIGHT, HOOP_Z); // Always look at the hoop rim
-
-            // 2. Renderer
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(width, height);
-            renderer.setPixelRatio(window.devicePixelRatio);
-            renderer.outputEncoding = THREE.sRGBEncoding;
-            container.appendChild(renderer.domElement);
-            
-            // 3. Physics World (Cannon.js)
-            world = new CANNON.World();
-            world.gravity.set(0, -9.82, 0); // Standard gravity
-            world.broadphase = new CANNON.NaiveBroadphase();
-            world.solver.iterations = 10;
-            
-            // Add contact materials
-            world.addContactMaterial(ballGroundContact);
-            world.addContactMaterial(ballRimContact);
-            
-            // 4. Lights (Neon Style)
-            const ambient = new THREE.AmbientLight(0x404040); // Soft white light
-            scene.add(ambient);
-            
-            // Spotlights for neon effect
-            const spotLightBlue = new THREE.SpotLight(0x00ffff, 20, 10, Math.PI / 4, 0.5, 2);
-            spotLightBlue.position.set(-5, 5, 0);
-            spotLightBlue.target.position.set(0, HOOP_HEIGHT, HOOP_Z);
-            scene.add(spotLightBlue);
-            scene.add(spotLightBlue.target);
-
-            const spotLightPink = new THREE.SpotLight(0xff00ff, 20, 10, Math.PI / 4, 0.5, 2);
-            spotLightPink.position.set(5, 5, 0);
-            spotLightPink.target.position.set(0, HOOP_HEIGHT, HOOP_Z);
-            scene.add(spotLightPink);
-            scene.add(spotLightPink.target);
-            
-            // 5. Game Objects
-            createCourt();
-            createHoop();
-            createBall();
-            
-            // 6. Event Listeners
-            window.addEventListener('resize', onWindowResize, false);
-            renderer.domElement.addEventListener('mousedown', handleStart3D);
-            renderer.domElement.addEventListener('mouseup', handleEnd3D);
-            renderer.domElement.addEventListener('mousemove', handleMove3D);
-
-            renderer.domElement.addEventListener('touchstart', handleStart3D);
-            renderer.domElement.addEventListener('touchend', handleEnd3D);
-            renderer.domElement.addEventListener('touchmove', handleMove3D);
-
-            // Start the animation loop
-            animateLoop();
-        }
-        
-        function onWindowResize() {
-            const width = container.clientWidth;
-            const height = container.clientHeight;
-            camera.aspect = width / height;
-            camera.updateProjectionMatrix();
-            renderer.setSize(width, height);
-        }
-        
-        function createCourt() {
-            // Ground (Three.js Mesh)
-            const groundGeometry = new THREE.BoxGeometry(20, 0.1, 20);
-            const groundMaterialMesh = new THREE.MeshPhongMaterial({ color: 0x333333, shininess: 10 });
-            const groundMesh = new THREE.Mesh(groundGeometry, groundMaterialMesh);
-            scene.add(groundMesh);
-            groundMesh.position.y = -0.05; // Set it just below y=0
-
-            // Ground (Cannon.js Body)
-            const groundShape = new CANNON.Box(new CANNON.Vec3(10, 0.05, 10));
-            groundBody = new CANNON.Body({ mass: 0, material: groundMaterial });
-            groundBody.addShape(groundShape);
-            groundBody.position.y = -0.05;
-            world.addBody(groundBody);
-        }
-
-        function createHoop() {
-            hoopGroup = new THREE.Group();
-            
-            // Backboard (Neon Pink)
-            const backboardGeometry = new THREE.BoxGeometry(1.8, 1.0, 0.05); // Standard backboard size
-            const backboardMaterialMesh = new THREE.MeshPhongMaterial({ 
-                color: 0xff00ff, 
-                emissive: 0xff00ff, 
-                emissiveIntensity: 0.5 
-            });
-            backboardMesh = new THREE.Mesh(backboardGeometry, backboardMaterialMesh);
-            backboardMesh.position.set(0, HOOP_HEIGHT + 0.5, HOOP_Z);
-            hoopGroup.add(backboardMesh);
-
-            // Rim (Neon Blue - The scoring target)
-            const rimRadius = 0.23;
-            const rimGeometry = new THREE.TorusGeometry(rimRadius, 0.02, 16, 100);
-            const rimMaterialMesh = new THREE.MeshPhongMaterial({ 
-                color: 0x00ffff, 
-                emissive: 0x00ffff, 
-                emissiveIntensity: 0.7 
-            });
-            rimMesh = new THREE.Mesh(rimGeometry, rimMaterialMesh);
-            rimMesh.rotation.x = Math.PI / 2; // Rotate to be horizontal
-            rimMesh.position.set(0, HOOP_HEIGHT, HOOP_Z);
-            hoopGroup.add(rimMesh);
-            
-            // Add a simple pole (not essential for game, but for visual)
-            const poleGeometry = new THREE.CylinderGeometry(0.1, 0.1, 8, 32);
-            const poleMaterialMesh = new THREE.MeshPhongMaterial({ color: 0x444444 });
-            const poleMesh = new THREE.Mesh(poleGeometry, poleMaterialMesh);
-            poleMesh.position.set(0, 4 / 2, HOOP_Z);
-            hoopGroup.add(poleMesh);
-            
-            scene.add(hoopGroup);
-
-            // Cannon.js Rim/Backboard Shapes (simple boxes for collision)
-            
-            // Backboard body
-            const backboardShape = new CANNON.Box(new CANNON.Vec3(0.9, 0.5, 0.025));
-            const backboardBody = new CANNON.Body({ mass: 0, material: rimMaterial });
-            backboardBody.addShape(backboardShape);
-            backboardBody.position.set(0, HOOP_HEIGHT + 0.5, HOOP_Z);
-            world.addBody(backboardBody);
-
-            // Rim Body (Simulate rim as a static cylinder)
-            const rimShape = new CANNON.Cylinder(rimRadius, rimRadius, 0.05, 16);
-            const rimBody = new CANNON.Body({ mass: 0, material: rimMaterial });
-            rimBody.addShape(rimShape);
-            // Rotate shape to be horizontal
-            rimBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2); 
-            rimBody.position.set(0, HOOP_HEIGHT, HOOP_Z);
-            world.addBody(rimBody);
-        }
-        
-        function createBall() {
-            // Three.js Mesh
-            const ballGeometry = new THREE.SphereGeometry(BALL_RADIUS, 32, 32);
-            const ballMaterialMesh = new THREE.MeshPhongMaterial({ color: 0xff8c00 }); // Basketball orange
-            ballMesh = new THREE.Mesh(ballGeometry, ballMaterialMesh);
-            scene.add(ballMesh);
-            
-            // Cannon.js Body
-            const ballShape = new CANNON.Sphere(BALL_RADIUS);
-            ballBody = new CANNON.Body({ mass: BALL_MASS, material: ballMaterial });
-            ballBody.addShape(ballShape);
-            
-            resetBallPosition(); // Initial placement
-            world.addBody(ballBody);
-        }
-        
-        function resetBallPosition() {
-            const startX = 0;
-            const startY = 1.2;
-            const startZ = 2;
-            
-            ballBody.position.set(startX, startY, startZ);
-            ballBody.velocity.set(0, 0, 0);
-            ballBody.angularVelocity.set(0, 0, 0);
-            ballBody.quaternion.set(0, 0, 0, 1);
-            ballMesh.position.copy(ballBody.position);
-            
-            ballState = 'ready';
-            scoreFlag = false;
-        }
-
-        // --- INPUT HANDLERS (Converting 2D Drag to 3D Force) ---
-
-        function getTouchPos(e) {
-             const rect = renderer.domElement.getBoundingClientRect();
-             let x, y;
-             if (e.touches && e.touches.length > 0) {
-                 x = e.touches[0].clientX - rect.left;
-                 y = e.touches[0].clientY - rect.top;
-             } else {
-                 x = e.clientX - rect.left;
-                 y = e.clientY - rect.top;
-             }
-             return { x, y };
-        }
-        
-        function handleStart3D(e) {
-            if (ballState !== 'ready') return;
-
-            const pos = getTouchPos(e);
-            dragStart = pos;
-            isDragging = true;
-            e.preventDefault();
-        }
-
-        function handleMove3D(e) {
-            if (!isDragging || ballState !== 'ready') return;
-            e.preventDefault();
-            // Optional: Provide visual feedback on drag (e.g., a line mesh)
-        }
-        
-        function handleEnd3D(e) {
-            if (!isDragging || ballState !== 'ready') return;
-            isDragging = false;
-            
-            const dragEnd = getTouchPos(e);
-
-            // Calculate 2D delta (screen space)
-            const dx = dragStart.x - dragEnd.x;
-            const dy = dragStart.y - dragEnd.y;
-            
-            // Scale and map to 3D force vector (World Space)
-            // dx -> X velocity (side to side)
-            const forceX = dx * 0.05;
-            
-            // Vertical force (Y) - inverted because screen Y is down
-            const forceY = dy * 0.08; 
-            
-            // Forward force (Z) - determines distance
-            const forceZ = -dy * 0.1; 
-            
-            // Apply the impulse to the ball body
-            const launchForce = new CANNON.Vec3(forceX, forceY, forceZ);
-            const worldPoint = ballBody.position;
-            ballBody.applyImpulse(launchForce, worldPoint);
-
-            ballState = 'flying';
-            shotsFired++;
-            updateUI(); // Update shots fired UI
-            e.preventDefault();
-        }
-
-        // --- GAME LOOP & PHYSICS UPDATE ---
-
-        function animateLoop() {
-            requestAnimationFrame(animateLoop);
-            
-            world.step(TIME_STEP); // Update physics world
-            
-            // Update mesh position and rotation from physics body
-            ballMesh.position.copy(ballBody.position);
-            ballMesh.quaternion.copy(ballBody.quaternion);
-            
-            // Update camera position smoothly
-            if (isCameraMoving) {
-                camera.position.lerp(targetCameraPos, 0.05);
-                camera.lookAt(0, HOOP_HEIGHT, HOOP_Z);
-                if (camera.position.distanceTo(targetCameraPos) < 0.01) {
-                    isCameraMoving = false;
-                }
-            }
-            
-            // Check for scoring and ball state
-            updateGameLogic();
-            
-            renderer.render(scene, camera);
-        }
-
-        function updateGameLogic() {
-            if (ballState === 'flying') {
-                const ballPos = ballBody.position;
-                const rimY = HOOP_HEIGHT;
-                const rimZ = HOOP_Z;
-                const rimXMin = -0.23;
-                const rimXMax = 0.23;
-
-                // 1. Scoring Check: Pass through the rim plane from positive Z to negative Z
-                if (ballPos.z > rimZ - 0.1 && ballPos.z < rimZ + 0.1 && 
-                    ballBody.velocity.z < -0.1 && !scoreFlag &&
-                    ballPos.y < rimY + BALL_RADIUS / 2 && ballPos.y > rimY - 0.2 &&
-                    ballPos.x > rimXMin && ballPos.x < rimXMax) {
-                    
-                    // SWISH! Scored.
-                    gameScore += 2;
-                    scoreFlag = true;
-                    updateUI();
-                    
-                    if (gameScore > playerData.highScore) {
-                        playerData.highScore = gameScore;
-                        savePlayerData(); 
-                        showMessageBox(`NEW HIGH SCORE! ${playerData.highScore} points!`, 'neon-pink');
-                    } else {
-                        showMessageBox("Swish! 2 Points!", 'neon-blue');
-                    }
-                    
-                    // Transition to resetting
-                    ballState = 'scored';
-                    setTimeout(() => {
-                        resetGame(false);
-                        isCameraMoving = true;
-                        targetCameraPos.set(0, CAMERA_Y, 5); // Return to initial view
-                    }, 2000);
-                }
-
-                // 2. Out of bounds/settled check
-                // If ball falls below ground or stops moving, reset
-                if (ballPos.y < -1 || 
-                    (ballPos.z < rimZ - 1 && ballBody.velocity.length() < 0.1)) {
-                    
-                    // Missed the shot and settled
-                    setTimeout(() => {
-                        resetGame(false);
-                        isCameraMoving = true;
-                        targetCameraPos.set(0, CAMERA_Y, 5); // Return to initial view
-                    }, 1500);
-                }
-            }
-        }
-        
-        // --- FIREBASE INITIALIZATION & AUTHENTICATION (Integrated from script.js) ---
-
-        async function initApp() {
+        async function initFirebase() {
             try {
-                // Set Firebase logging level to Debug for visibility
-                setLogLevel('debug');
-
+                // setLogLevel('Debug'); // Uncomment for debugging Firestore
                 app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
                 auth = getAuth(app);
-                
-                // Use local persistence to maintain user state
+                db = getFirestore(app);
+
+                // Set local persistence (optional, but good practice)
                 await setPersistence(auth, browserLocalPersistence);
 
-                // Sign in using the custom token if provided, otherwise sign in anonymously
+                // Check for custom token, otherwise sign in anonymously
                 if (initialAuthToken) {
                     await signInWithCustomToken(auth, initialAuthToken);
                 } else {
                     await signInAnonymously(auth);
                 }
 
-                // Auth state change listener
+                // Auth state listener
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
                         userId = user.uid;
+                        document.getElementById('user-info').textContent = `User: ${userId.substring(0, 8)}...`;
                         isAuthReady = true;
-                        setupDataListener();
+                        initFirestoreListener();
                     } else {
-                        userId = 'guest-' + crypto.randomUUID(); 
+                        // This should ideally not happen after forced sign-in
+                        userId = crypto.randomUUID(); 
+                        document.getElementById('user-info').textContent = `Guest: ${userId.substring(0, 8)}...`;
                         isAuthReady = true;
-                        updateUI();
+                        // For guest, initialize local data and show stats
+                        updateMissionUI();
+                        document.getElementById('stats-overall-rating').textContent = playerData.overallRating;
                     }
-                    isLoading = false;
-                    document.getElementById('loading-overlay').classList.add('hidden');
-                    showMainMenu();
                 });
-
-            } catch (e) {
-                console.error("Firebase Initialization Error:", e);
-                isLoading = false;
-                document.getElementById('loading-overlay').classList.add('hidden');
-                userId = 'guest-fail';
-                isAuthReady = true;
-                updateUI();
-                showMainMenu();
+            } catch (error) {
+                console.error("Firebase Initialization Error:", error);
+                // Handle error gracefully for the user
+                showModal('Failed to connect to game services. Playing offline.');
+                isAuthReady = true; // Still allow game to start offline
+                updateMissionUI();
+                document.getElementById('stats-overall-rating').textContent = playerData.overallRating;
+                hideLoading();
             }
         }
 
-        // --- FIRESTORE DATA HANDLING ---
+        function initFirestoreListener() {
+            if (!isAuthReady || !db || !userId) return;
 
-        function getPlayerDocRef() {
-            if (!db || !userId) return null;
-            return doc(db, 'artifacts', appId, 'users', userId, 'playerData', 'stats');
-        }
+            const userDocRef = doc(db, USER_DATA_PATH(userId));
 
-        function setupDataListener() {
-            const docRef = getPlayerDocRef();
-            if (!docRef) return;
-
-            onSnapshot(docRef, (docSnap) => {
+            // Set up real-time listener
+            onSnapshot(userDocRef, (docSnap) => {
                 if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    playerData = { ...playerData, ...data };
+                    const fetchedData = docSnap.data();
+                    
+                    // Safely merge fetched data into local state
+                    playerData.overallRating = fetchedData.overallRating || 75;
+                    playerData.highScore = fetchedData.highScore || 0;
+                    playerData.currentMission = fetchedData.currentMission || 1;
+                    
+                    // Safely parse missions data
+                    if (fetchedData.missions && typeof fetchedData.missions === 'string') {
+                         try {
+                            playerData.missions = JSON.parse(fetchedData.missions);
+                        } catch (e) {
+                            console.error("Error parsing missions JSON:", e);
+                        }
+                    } else if (fetchedData.missions && typeof fetchedData.missions === 'object') {
+                        playerData.missions = fetchedData.missions;
+                    }
+
+                    console.log("Player data updated from Firestore:", playerData);
                 } else {
-                    savePlayerData();
+                    console.log("No profile found, creating new one.");
+                    savePlayerData(); // Create initial document
                 }
-                updateUI();
+
+                // Update UI based on loaded data
+                updateScoreDisplays();
+                updateMissionUI();
+                document.getElementById('stats-overall-rating').textContent = playerData.overallRating;
+
+                // Game can now safely start
+                if (isLoading) {
+                    init3DEnvironment();
+                }
             }, (error) => {
-                console.error("Firestore real-time listener error:", error);
+                console.error("Firestore Listener Error:", error);
+                showModal('Lost connection to game server. Data may not save.');
             });
         }
 
         async function savePlayerData() {
-            if (!isAuthReady || !userId) return;
-            const docRef = getPlayerDocRef();
-            if (!docRef) return;
-
-            try {
-                await setDoc(docRef, playerData, { merge: true });
-            } catch (e) {
-                console.error("Error saving player data:", e);
+            if (!isAuthReady || !db || !userId) {
+                console.warn("Cannot save data: Auth not ready or user ID missing.");
+                return;
             }
-        }
 
-        // --- UI AND SCREEN MANAGEMENT ---
-
-        function updateUI() {
-            if (isLoading || !isAuthReady) return; 
-
-            const safeSetText = (id, text) => {
-                const element = document.getElementById(id);
-                if (element) element.textContent = text;
+            const userDocRef = doc(db, USER_DATA_PATH(userId));
+            const dataToSave = {
+                overallRating: playerData.overallRating,
+                highScore: playerData.highScore,
+                currentMission: playerData.currentMission,
+                // Serialize missions object for safe storage in Firestore
+                missions: JSON.stringify(playerData.missions),
+                updatedAt: new Date().toISOString()
             };
 
-            // MANDATORY: Show full User ID
-            safeSetText('user-info', `USER ID: ${userId || 'Guest'}`);
-            safeSetText('player-id-display', userId || 'Guest');
-            
-            safeSetText('stats-overall-rating', playerData.overallRating);
-            safeSetText('stats-high-score', playerData.highScore);
-            safeSetText('high-score-display', `BEST: ${playerData.highScore}`);
-            safeSetText('score-display', gameScore);
-            safeSetText('shots-fired', `SHOTS: ${shotsFired}`);
-            
-            // Progress Bar
-            const progressBar = document.getElementById('mission-progress-bar');
-            if (progressBar) {
-                const progressPercent = Math.min(100, (playerData.overallRating - 75) * 4); 
-                progressBar.style.width = `${progressPercent}%`;
-            }
-
-            // Mission 2 Button
-            const mission2Button = document.getElementById('mission-2-button');
-            if (mission2Button) {
-                mission2Button.textContent = playerData.missions[1].completed 
-                    ? '2. The Rookie Contract (AVAILABLE)' 
-                    : '2. The Rookie Contract (LOCKED)';
-                mission2Button.disabled = !playerData.missions[1].completed;
+            try {
+                await setDoc(userDocRef, dataToSave, { merge: true });
+            } catch (error) {
+                console.error("Error saving player data:", error);
+                showModal('Could not save your progress.');
             }
         }
 
-        function showScreen(screenId) {
-            const menuScreens = [
-                'main-menu-container', 'missions-screen', 'my-hub-screen', 
-                'my-stats-screen', 'options-screen', 'quit-screen', 
-                'mission-1-screen', 'mission-2-screen'
-            ];
+        function updateScoreDisplays() {
+            document.getElementById('high-score-display').textContent = `BEST: ${playerData.highScore}`;
+            document.getElementById('score-display').textContent = score;
+            document.getElementById('shots-fired').textContent = `SHOTS: ${shotsFired}`;
+            document.getElementById('stats-high-score').textContent = playerData.highScore;
+        }
+
+        function updateMissionUI() {
+            const mission2Button = document.getElementById('mission-2-button');
+            const progress = (playerData.currentMission - 1) * 50; // Simple progress logic (50% per mission)
+            document.getElementById('mission-progress-bar').style.width = `${Math.min(100, progress)}%`;
+
+            if (playerData.currentMission > 1) {
+                mission2Button.textContent = '2. The Rookie Contract (READY)';
+                mission2Button.disabled = false;
+            } else {
+                mission2Button.textContent = '2. The Rookie Contract (LOCKED)';
+                mission2Button.disabled = true;
+            }
+        }
+
+        function init3DEnvironment() {
+            // --- THREE.JS SETUP ---
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x333333); // Dark background for neon effect
+            renderer.shadowMap.enabled = true;
+            document.getElementById('game-container').appendChild(renderer.domElement);
+
+            // --- CANNON.JS SETUP ---
+            world = new CANNON.World();
+            world.gravity.set(0, -9.82, 0);
+            world.broadphase = new CANNON.NaiveBroadphase();
+            world.solver.iterations = 10;
+
+            // --- LIGHTING ---
+            const ambient = new THREE.AmbientLight(0x404040, 10);
+            scene.add(ambient);
             
-            const gameScreen = document.getElementById('quick-play-game-screen');
+            const spotLight = new THREE.SpotLight(0xffffff, 200, 100, Math.PI * 0.25, 0.5, 2);
+            spotLight.position.set(0, 20, 0);
+            spotLight.castShadow = true;
+            spotLight.shadow.mapSize.width = 1024;
+            spotLight.shadow.mapSize.height = 1024;
+            spotLight.shadow.camera.near = 0.5;
+            spotLight.shadow.camera.far = 50;
+            scene.add(spotLight);
+
+            // --- GROUND (CANNON & THREE) ---
+            const groundShape = new CANNON.Plane();
+            const groundBody = new CANNON.Body({ mass: 0, shape: groundShape });
+            groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2); // Rotate to horizontal
+            world.addBody(groundBody);
+
+            const groundMesh = new THREE.Mesh(
+                new THREE.PlaneGeometry(100, 100),
+                new THREE.MeshStandardMaterial({ color: 0x228B22, side: THREE.DoubleSide })
+            );
+            groundMesh.rotation.x = -Math.PI / 2;
+            groundMesh.receiveShadow = true;
+            scene.add(groundMesh);
+
+            // --- BACKBOARD & HOOP ---
+            createBackboard(0, 3.0, -10);
+            createHoop(0, 3.0, -10);
+
+            // --- PLAYER CHARACTER (for reference/camera control) ---
+            const playerShape = new CANNON.Sphere(0.5);
+            playerBody = new CANNON.Body({ mass: PLAYER_MASS, shape: playerShape, position: new CANNON.Vec3(0, 0.5, 0) });
+            world.addBody(playerBody);
+            playerBody.linearDamping = 0.9;
+            playerBody.angularDamping = 0.9;
+
+            const playerMesh = new THREE.Mesh(
+                new THREE.SphereGeometry(0.5, 16, 16),
+                new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true, transparent: true, opacity: 0.3 })
+            );
+            scene.add(playerMesh);
+            player = playerMesh;
             
-            // 1. Hide/Show Opaque Menus
-            menuScreens.forEach(id => {
-                const screen = document.getElementById(id);
-                if (screen) {
-                    if (id === screenId) {
-                        screen.classList.remove('hidden');
-                        document.getElementById('game-container').style.pointerEvents = 'none'; // Lock 3D interaction
+            // --- BASKETBALL ---
+            createBall();
+
+            // --- CAMERA SETUP ---
+            // Camera position relative to player (third-person view)
+            camera.position.set(0, 3, 5); 
+            
+            // --- EVENT LISTENERS ---
+            window.addEventListener('resize', onWindowResize, false);
+            document.addEventListener('keydown', onKeyDown, false);
+            document.addEventListener('keyup', onKeyUp, false);
+            
+            hideLoading();
+            animate();
+        }
+        
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- 3D UTILITIES ---
+
+        function createBackboard(x, y, z) {
+            // Backboard (Mesh)
+            const backboardGeo = new THREE.BoxGeometry(2, 1.5, 0.1);
+            const backboardMat = new THREE.MeshStandardMaterial({ color: 0xff00ff, metalness: 0.8, roughness: 0.2 });
+            const backboardMesh = new THREE.Mesh(backboardGeo, backboardMat);
+            backboardMesh.position.set(x, y, z);
+            backboardMesh.receiveShadow = true;
+            backboardMesh.castShadow = true;
+            scene.add(backboardMesh);
+
+            // Backboard (Physics - Mass 0, static)
+            const backboardShape = new CANNON.Box(new CANNON.Vec3(1, 0.75, 0.05));
+            const backboardBody = new CANNON.Body({ mass: 0, shape: backboardShape, position: new CANNON.Vec3(x, y, z) });
+            world.addBody(backboardBody);
+
+            // Backboard Pole
+            const poleGeo = new THREE.CylinderGeometry(0.1, 0.1, 8, 8);
+            const poleMat = new THREE.MeshStandardMaterial({ color: 0x555555 });
+            const poleMesh = new THREE.Mesh(poleGeo, poleMat);
+            poleMesh.position.set(x, y - 4.0, z);
+            poleMesh.receiveShadow = true;
+            poleMesh.castShadow = true;
+            scene.add(poleMesh);
+        }
+
+        function createHoop(x, y, z) {
+            // Rim (Mesh)
+            const rimGeo = new THREE.TorusGeometry(0.4, 0.05, 8, 32);
+            const rimMat = new THREE.MeshStandardMaterial({ color: 0xff4500 }); // Orange rim
+            const rimMesh = new THREE.Mesh(rimGeo, rimMat);
+            rimMesh.rotation.x = Math.PI / 2;
+            rimMesh.position.set(x, y - 0.5, z + 0.5);
+            rimMesh.castShadow = true;
+            scene.add(rimMesh);
+
+            // Rim (Physics - Static Cylinder for collision)
+            const rimShape = new CANNON.Cylinder(0.4, 0.4, 0.1, 16);
+            const rimBody = new CANNON.Body({ mass: 0, shape: rimShape, position: new CANNON.Vec3(x, y - 0.5, z + 0.5) });
+            rimBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
+            world.addBody(rimBody);
+            
+            // Score sensor (Invisible Plane beneath the rim)
+            const sensorShape = new CANNON.Box(new CANNON.Vec3(0.5, 0.01, 0.5));
+            const sensorBody = new CANNON.Body({ mass: 0, shape: sensorShape, position: new CANNON.Vec3(x, y - 0.6, z + 0.5) });
+            sensorBody.collisionResponse = false; // Doesn't affect ball physics
+            world.addBody(sensorBody);
+
+            // Set up collision event listener for scoring
+            sensorBody.addEventListener('collide', (event) => {
+                if (event.body === basketballBody) {
+                    handleScore();
+                }
+            });
+        }
+
+        function createBall() {
+            // Basketball (Mesh)
+            const ballRadius = 0.25;
+            const ballGeo = new THREE.SphereGeometry(ballRadius, 32, 32);
+            const ballMat = new THREE.MeshStandardMaterial({ color: 0xff8c00, roughness: 0.6, metalness: 0.1 });
+            basketballMesh = new THREE.Mesh(ballGeo, ballMat);
+            basketballMesh.castShadow = true;
+            scene.add(basketballMesh);
+
+            // Basketball (Physics)
+            const ballShape = new CANNON.Sphere(ballRadius);
+            basketballBody = new CANNON.Body({ 
+                mass: 1, 
+                shape: ballShape, 
+                position: new CANNON.Vec3(0, 1, 5), // Initial position away from hoop
+                material: new CANNON.Material("ballMaterial")
+            });
+            world.addBody(basketballBody);
+            
+            // Add some damping to prevent endless bouncing
+            basketballBody.linearDamping = 0.1;
+            basketballBody.angularDamping = 0.5;
+        }
+        
+        function handleScore() {
+            // Only score if the ball is currently moving through the hoop downwards
+            const isMovingDown = basketballBody.velocity.y < -0.5;
+
+            // This is a simple scoring mechanism. In a real game, you would use a more sophisticated method
+            // (e.g., raycasting to detect movement direction and a flag to prevent multiple scores per shot)
+            if (isMovingDown) {
+                // Ensure the ball is not already marked as scored for this shot
+                if (!basketballBody.userData || !basketballBody.userData.scored) {
+                    score += 2;
+                    basketballBody.userData = { scored: true }; // Mark the shot as scored
+                    updateScoreDisplays();
+                    showModal('SWISH! +2 Points!', 'neon-text-blue');
+                }
+            }
+        }
+        
+        // --- INPUT HANDLING ---
+
+        function onKeyDown(event) {
+            if (document.getElementById('quick-play-game-screen').classList.contains('hidden')) return;
+            
+            switch (event.code) {
+                case 'KeyW': inputState.forward = true; break;
+                case 'KeyS': inputState.backward = true; break;
+                case 'KeyA': inputState.left = true; break;
+                case 'KeyD': inputState.right = true; break;
+                case 'Space': 
+                    if (canShoot) {
+                        inputState.shoot = true;
+                        shootBall();
+                    }
+                    break;
+            }
+        }
+
+        function onKeyUp(event) {
+             if (document.getElementById('quick-play-game-screen').classList.contains('hidden')) return;
+
+            switch (event.code) {
+                case 'KeyW': inputState.forward = false; break;
+                case 'KeyS': inputState.backward = false; break;
+                case 'KeyA': inputState.left = false; break;
+                case 'KeyD': inputState.right = false; break;
+                case 'Space': inputState.shoot = false; break;
+            }
+        }
+
+        function shootBall() {
+            if (!canShoot) return;
+            canShoot = false;
+            
+            shotsFired++;
+            updateScoreDisplays();
+
+            // Reset the 'scored' flag for the new shot
+            basketballBody.userData = { scored: false }; 
+
+            // Calculate shot direction (from player to hoop)
+            const playerPos = playerBody.position;
+            const hoopPos = new CANNON.Vec3(0, 3.0, -10); // Hoop center
+            
+            // Direction vector
+            let direction = new CANNON.Vec3();
+            hoopPos.vsub(playerPos, direction);
+            direction.normalize();
+            
+            // Add a vertical component for the arc
+            const shotDirection = new CANNON.Vec3(direction.x, direction.y + 0.5, direction.z);
+            shotDirection.normalize();
+
+            // Reset ball position to player's hands (a point in front of the player)
+            const ballInitialPos = new CANNON.Vec3(
+                playerPos.x + shotDirection.x * 0.5,
+                playerPos.y + 1.5,
+                playerPos.z + shotDirection.z * 0.5
+            );
+
+            // Stop the ball and reset its state before shooting
+            basketballBody.velocity.set(0, 0, 0);
+            basketballBody.angularVelocity.set(0, 0, 0);
+            basketballBody.position.copy(ballInitialPos);
+            
+            // Apply impulse (force)
+            basketballBody.applyImpulse(
+                shotDirection.scale(SHOT_FORCE + (playerData.overallRating / 20)), // Scale force by player rating
+                basketballBody.position
+            );
+            
+            // Re-enable shooting after a short cooldown
+            setTimeout(() => {
+                canShoot = true;
+            }, 1500); // 1.5 second cooldown
+        }
+
+        // --- GAME LOOP ---
+
+        let lastTime = performance.now();
+        const timeStep = 1 / 60;
+
+        function animate(time) {
+            requestAnimationFrame(animate);
+
+            // Only run physics and game logic if the Quick Play screen is active
+            if (document.getElementById('quick-play-game-screen').classList.contains('hidden')) {
+                renderer.render(scene, camera);
+                return;
+            }
+
+            const deltaTime = (time - lastTime) / 1000;
+            lastTime = time;
+
+            // Step the physics world
+            world.step(timeStep, deltaTime, 3);
+            
+            // --- MOVEMENT LOGIC (CANNON) ---
+            
+            // Player movement direction
+            let moveVector = new THREE.Vector3(0, 0, 0);
+            if (inputState.forward) moveVector.z -= 1;
+            if (inputState.backward) moveVector.z += 1;
+            if (inputState.left) moveVector.x -= 1;
+            if (inputState.right) moveVector.x += 1;
+            moveVector.normalize();
+            
+            // Apply movement force
+            const currentVelocity = playerBody.velocity;
+            
+            // Calculate desired velocity
+            const desiredVelocity = new CANNON.Vec3(
+                moveVector.x * PLAYER_SPEED,
+                currentVelocity.y, // Maintain gravity effect
+                moveVector.z * PLAYER_SPEED
+            );
+            
+            // Calculate force required to achieve desired velocity (simple approximation)
+            let force = new CANNON.Vec3();
+            desiredVelocity.vsub(currentVelocity, force);
+            force.scale(playerBody.mass * 10, force); // Apply scaling force
+
+            // Clear horizontal velocity before applying new force to prevent "sliding"
+            playerBody.velocity.x *= 0.8;
+            playerBody.velocity.z *= 0.8;
+
+            playerBody.applyForce(force, playerBody.position);
+
+            // --- RENDER UPDATES (THREE) ---
+
+            // 1. Update Player Mesh position (if visualized)
+            player.position.copy(playerBody.position);
+            player.quaternion.copy(playerBody.quaternion);
+
+            // 2. Update Basketball Mesh position
+            basketballMesh.position.copy(basketballBody.position);
+            basketballMesh.quaternion.copy(basketballBody.quaternion);
+            
+            // 3. Update Camera position (follow the player)
+            camera.position.x = player.position.x;
+            camera.position.z = player.position.z + 5;
+            camera.position.y = player.position.y + 3;
+            
+            // Camera looks slightly forward, towards the hoop
+            camera.lookAt(0, 2.5, -10); 
+
+            // Check if ball is out of bounds (too far away)
+            if (basketballBody.position.length() > 50) {
+                resetBallPosition();
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function resetBallPosition() {
+            // Reset ball to player's position
+            basketballBody.velocity.set(0, 0, 0);
+            basketballBody.angularVelocity.set(0, 0, 0);
+            basketballBody.position.set(playerBody.position.x, playerBody.position.y + 1, playerBody.position.z);
+            basketballBody.userData = { scored: false };
+            canShoot = true; // Allow shooting immediately after reset
+        }
+
+        // --- UI & GAME FLOW FUNCTIONS ---
+
+        function showScreen(id) {
+            const screens = ['main-menu-container', 'quick-play-game-screen', 'my-hub-screen', 'my-stats-screen', 'missions-screen', 'options-screen', 'quit-screen', 'mission-1-screen', 'mission-2-screen'];
+            screens.forEach(screenId => {
+                const element = document.getElementById(screenId);
+                if (element) {
+                    // Quick Play is the only screen that needs to be an 'overlay' 
+                    // and allow clicks to pass through if not interactive.
+                    if (screenId === 'quick-play-game-screen') {
+                        element.classList.toggle('hidden', screenId !== id);
+                        // Stop the meter animation if a menu other than the quick play screen is showing
+                        if (screenId !== id) stopMeter(true);
+                        
                     } else {
-                        screen.classList.add('hidden');
-                        if (id.includes('mission-1')) clearInterval(missionMeterInterval);
+                        // All other screens are modal menus
+                        element.classList.toggle('hidden', screenId !== id);
                     }
                 }
             });
             
-            // 2. Manage the Game Overlay (which is transparent)
-            if (gameScreen) {
-                if (screenId === 'quick-play-game-screen') {
-                    gameScreen.classList.remove('hidden');
-                    document.getElementById('game-container').style.pointerEvents = 'auto'; // Unlock 3D interaction
-                    isGameRunning = true;
-                } else {
-                    gameScreen.classList.add('hidden');
-                    isGameRunning = false;
-                }
-            }
+            // Ensure 3D rendering is paused or resumed
+            const isGameActive = id === 'quick-play-game-screen';
+            // Game logic is paused inside the animate loop, so no extra pause function needed.
         }
 
-        // Menu Functions
-        window.showMainMenu = function() {
+        function showMainMenu() {
             showScreen('main-menu-container');
-            isGameRunning = false;
         }
 
-        window.quickPlay = function() {
+        function quickPlay() {
             showScreen('quick-play-game-screen');
-            isGameRunning = true;
-            resetGame(true);
-            isCameraMoving = true;
-            targetCameraPos.set(0, CAMERA_Y, 5); // Set camera to starting position
+            // Reset game state for a new quick play session
+            resetGame(false); 
         }
 
-        window.loadMissions = function() {
-            showScreen('missions-screen');
+        function resetGame(shouldShowModal) {
+            score = 0;
+            shotsFired = 0;
+            updateScoreDisplays();
+            resetBallPosition();
+            
+            if (playerBody) {
+                // Reset player position closer to the action
+                playerBody.position.set(0, 0.5, 5); 
+                playerBody.velocity.set(0, 0, 0);
+                playerBody.angularVelocity.set(0, 0, 0);
+            }
+
+            // Check and update High Score upon ending the previous game
+            if (score > playerData.highScore) {
+                playerData.highScore = score;
+                savePlayerData();
+            }
+
+            if (shouldShowModal) showModal('Quick Play Reset!', 'neon-text-blue');
         }
 
-        window.loadMyHub = function() {
+        function loadMyHub() {
             showScreen('my-hub-screen');
-            updateUI();
+            document.getElementById('player-id-display').textContent = userId;
         }
 
-        window.loadMyStats = function() {
+        function loadMyStats() {
             showScreen('my-stats-screen');
-            updateUI();
+            // Data is updated via the Firestore listener
+        }
+        
+        function loadMissions() {
+            showScreen('missions-screen');
+            updateMissionUI();
         }
 
-        window.loadOptions = function() {
+        function loadOptions() {
             showScreen('options-screen');
         }
 
-        window.quitGame = function() {
+        function quitGame() {
             showScreen('quit-screen');
         }
-
-        // --- QUICK PLAY (3D) LOGIC ---
         
-        window.resetGame = function(fullReset = true) {
-            resetBallPosition();
-
-            if (fullReset) {
-                gameScore = 0;
-                shotsFired = 0;
-            }
-            updateUI();
-        }
-
-        // --- MISSION LOGIC ---
-
-        let missionMeterInterval = null;
-        let missionMeterValue = 0;
-        let meterDirection = 1;
-
-        window.startMission = function(missionId) {
+        // --- MISSION 1 LOGIC (Meter Challenge) ---
+        
+        function startMission(missionId) {
             if (missionId === 1) {
                 showScreen('mission-1-screen');
-                missionMeterValue = 0;
+                document.getElementById('meter-feedback').textContent = '';
+                meterValue = 0;
                 meterDirection = 1;
+                document.getElementById('meter-pointer').style.left = '0%';
                 
-                const meterDisplay = document.getElementById('meter-display');
-                const feedback = document.getElementById('mission-feedback');
-                if(meterDisplay) meterDisplay.textContent = '0';
-                if(feedback) feedback.textContent = '';
-                
-                // Start meter animation
-                if (missionMeterInterval) clearInterval(missionMeterInterval);
-                missionMeterInterval = setInterval(updateMissionMeter, 20);
+                // Start or restart the meter animation
+                if (mission1Interval) clearInterval(mission1Interval);
+                mission1Interval = setInterval(updateMeter, 10); // 10ms update rate
             } else if (missionId === 2) {
-                if (!playerData.missions[1].completed) {
-                    showMessageBox("Mission 2 is LOCKED. Complete Mission 1 first!", 'neon-pink');
-                    return;
+                if (playerData.currentMission > 1) {
+                    showScreen('mission-2-screen');
+                } else {
+                    showModal('Mission 2 is locked! Complete Mission 1 first.', 'neon-text-pink');
                 }
-                showScreen('mission-2-screen');
             }
         }
 
-        function updateMissionMeter() {
-            missionMeterValue += meterDirection;
+        function updateMeter() {
+            meterValue += meterDirection * 1; // Speed of meter
             
-            if (missionMeterValue >= 100) {
+            if (meterValue >= 100) {
                 meterDirection = -1;
-                missionMeterValue = 100;
-            } else if (missionMeterValue <= 0) {
+                meterValue = 100;
+            } else if (meterValue <= 0) {
                 meterDirection = 1;
-                missionMeterValue = 0;
+                meterValue = 0;
             }
-            
-            const meterDisplay = document.getElementById('meter-display');
-            const meterPointer = document.getElementById('meter-pointer');
-            if (meterDisplay) meterDisplay.textContent = missionMeterValue;
-            if (meterPointer) meterPointer.style.left = `${missionMeterValue}%`;
+
+            document.getElementById('meter-display').textContent = Math.round(meterValue);
+            document.getElementById('meter-pointer').style.left = `${meterValue}%`;
         }
 
-        window.stopMeter = function() {
-            if (missionMeterInterval) {
-                clearInterval(missionMeterInterval);
-                missionMeterInterval = null;
-            }
+        function stopMeter() {
+            if (!mission1Interval) return;
+            clearInterval(mission1Interval);
+            mission1Interval = null;
             
-            const feedback = document.getElementById('mission-feedback');
-            if (!feedback) return;
+            const feedbackEl = document.getElementById('mission-feedback');
             
-            let score = 0;
-            // Sweet spot: 80-100
-            if (missionMeterValue >= 80 && missionMeterValue <= 100) {
-                score = 100;
-                feedback.textContent = 'PERFECT PASS! (+5 Overall)';
-                feedback.classList.remove('text-red-500', 'text-neon-pink');
-                feedback.classList.add('text-neon-blue');
-                playerData.overallRating += 5;
-            } else if (missionMeterValue >= 60 || missionMeterValue <= 20) {
-                score = 50;
-                feedback.textContent = 'GOOD! (+2 Overall)';
-                feedback.classList.remove('text-red-500', 'text-neon-blue');
-                feedback.classList.add('text-neon-pink');
-                playerData.overallRating += 2;
+            // Sweet spot: 80% to 90% (inclusive)
+            if (meterValue >= 80 && meterValue <= 90) {
+                feedbackEl.textContent = 'PERFECT SHOT! Mission Complete!';
+                feedbackEl.className = 'text-xl font-bold mt-4 neon-text-blue';
+                completeMission(1);
+            } else if (meterValue > 70 && meterValue < 95) {
+                 feedbackEl.textContent = 'Good Shot. Close, but no cigar. Try again.';
+                 feedbackEl.className = 'text-xl font-bold mt-4 text-yellow-500';
             } else {
-                feedback.textContent = 'MISS! (No change)';
-                feedback.classList.remove('text-neon-blue', 'text-neon-pink');
-                feedback.classList.add('text-red-500');
+                feedbackEl.textContent = 'Off Target. Practice makes perfect.';
+                feedbackEl.className = 'text-xl font-bold mt-4 neon-text-pink';
             }
-
-            if (score > 0) {
-                playerData.missions[1].completed = true;
+        }
+        
+        function completeMission(missionId) {
+            if (playerData.missions[missionId] && !playerData.missions[missionId].completed) {
+                playerData.missions[missionId].completed = true;
+                playerData.overallRating += playerData.missions[missionId].ratingBonus;
+                playerData.currentMission = missionId + 1; // Unlock next mission
                 savePlayerData();
-                updateUI();
+                showModal(`Mission ${missionId} Completed! Overall Rating increased to ${playerData.overallRating}!`, 'neon-text-blue');
             }
         }
 
-        window.completeMission2 = function(option) {
-            let resultMessage = '';
+        function completeMission2(option) {
+            const bonus = option === 1 ? 5 : 1;
+            playerData.missions[2].ratingBonus = bonus;
             
-            if (option === 1) {
-                playerData.overallRating += 5;
-                resultMessage = "Smart choice! You earned a +5 OVERALL boost from your incentives!";
-            } else {
-                playerData.overallRating += 1;
-                resultMessage = "A safe choice. You earned a +1 OVERALL boost.";
-            }
-
-            playerData.missions[2].completed = true;
-            savePlayerData();
-            updateUI();
-            showMessageBox(resultMessage, 'neon-blue');
+            // This is just a simulated choice; completion is handled the same way
+            completeMission(2);
             showMainMenu();
         }
 
-        // --- UTILITIES (Custom Modal) ---
+        // --- UTILITIES ---
 
-        let modalTimeout;
-
-        window.showMessageBox = function(message, color = 'neon-blue') {
-            const modal = document.getElementById('message-modal');
-            const box = document.getElementById('message-box');
-            const text = document.getElementById('modal-text');
-            
-            if (modal && box && text) {
-                text.textContent = message;
-                
-                box.classList.remove('shadow-pink-500/70', 'shadow-blue-500/70');
-                box.classList.remove('neon-border-pink', 'border-neon-blue');
-                
-                if (color === 'neon-pink') {
-                    box.classList.add('neon-border-pink', 'shadow-pink-500/70');
-                    box.style.animation = 'none';
-                    void box.offsetHeight; // Trigger reflow
-                    box.style.animation = 'pulse 0.8s ease-in-out infinite alternate';
-                } else {
-                    box.classList.add('border-neon-blue', 'shadow-blue-500/70');
-                    box.style.animation = 'none';
-                }
-                
-                modal.classList.remove('hidden');
-
-                clearTimeout(modalTimeout);
-                modalTimeout = setTimeout(window.hideMessageBox, 3000); 
+        function hideLoading() {
+            isLoading = false;
+            const loadingOverlay = document.getElementById('loading-overlay');
+            if (loadingOverlay) {
+                loadingOverlay.style.opacity = '0';
+                setTimeout(() => loadingOverlay.classList.add('hidden'), 300);
             }
         }
 
-        window.hideMessageBox = function() {
-            document.getElementById('message-modal').classList.add('hidden');
-        }
+        function showModal(message, styleClass = 'neon-text-pink') {
+            const modalEl = document.getElementById('message-modal');
+            const boxEl = document.getElementById('message-box');
+            const textEl = document.getElementById('modal-text');
 
+            textEl.textContent = message;
+            textEl.className = `text-xl font-bold ${styleClass}`;
+            boxEl.style.animation = 'pulse 1s infinite alternate';
+            
+            modalEl.classList.remove('hidden');
+            modalEl.onclick = () => {
+                modalEl.classList.add('hidden');
+                boxEl.style.animation = 'none';
+                modalEl.onclick = null;
+            };
+
+            // Auto-hide after 3 seconds if not clicked
+            setTimeout(() => {
+                if (!modalEl.classList.contains('hidden')) {
+                    modalEl.classList.add('hidden');
+                    boxEl.style.animation = 'none';
+                    modalEl.onclick = null;
+                }
+            }, 3000);
+        }
 
         // --- START APP ---
-        window.onload = function() {
-            setup3D(); 
-            initApp();
+        window.onload = function () {
+            // First, initialize Firebase and authentication
+            initFirebase();
+            // init3DEnvironment will be called after Firestore data is loaded
         }
     </script>
+    <!-- === END OF SCRIPT.JS CONTENT === -->
 </body>
 </html>
