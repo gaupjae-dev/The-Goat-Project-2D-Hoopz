@@ -1,3 +1,4 @@
+// --- FIREBASE IMPORTS ---
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { 
     getAuth, 
@@ -11,9 +12,7 @@ import {
     getFirestore, 
     doc, 
     setDoc, 
-    getDoc, 
     onSnapshot, 
-    collection, 
     setLogLevel
 } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
@@ -29,756 +28,760 @@ let db;
 let auth;
 let userId = null;
 let isAuthReady = false;
+let isLoading = true;
 
 // Player Data State (Local)
 let playerData = {
     overallRating: 75,
     highScore: 0,
-    currentMission: 1, // 1 = The Jump Start
+    currentMission: 1, 
     missions: {
-        1: { completed: false, value: 0 },
-        2: { completed: false, value: 0 }
-    }
+        1: { completed: false, ratingBonus: 5 },
+        2: { completed: false, ratingBonus: 0 }
+    },
 };
 
-// Quick Play Game State
-let canvas, ctx;
-const ballRadius = 15;
-const hoopPosition = { x: 700, y: 150, width: 40, height: 10 };
-const GRAVITY = 0.5;
-const AIR_FRICTION = 0.99;
-let isGameRunning = false;
+const USER_DATA_PATH = (uid) => `artifacts/${appId}/users/${uid}/gameData/playerProfile`;
 
-let ball = {
-    x: 60,
-    y: 400,
-    vx: 0,
-    vy: 0,
-    state: 'ready', // 'ready', 'dragging', 'flying', 'scored'
-    scoreFlag: false // Prevents scoring multiple times per shot
-};
-
-let gameScore = 0;
+// --- THREE.JS & CANNON.JS SETUP ---
+let scene, camera, renderer;
+let world; // Cannon.js world
+let basketballMesh, basketballBody;
+let player, playerBody; // playerBody stores the Cannon.js physics body for the player
+let inputState = { forward: false, backward: false, left: false, right: false, shoot: false };
+let canShoot = true;
+let score = 0;
 let shotsFired = 0;
-let dragStart = { x: 0, y: 0 };
-let currentDrag = { x: 0, y: 0 };
+let mission1Interval = null;
+let meterValue = 0;
+let meterDirection = 1;
 
-// --- FIREBASE INITIALIZATION & AUTHENTICATION ---
+// Game Configuration
+const PLAYER_SPEED = 5;
+const SHOT_FORCE = 15;
+const PLAYER_MASS = 50;
 
-/**
- * Initializes Firebase, authenticates the user, and sets up the data listener.
- */
-async function initApp() {
+// --- CORE INITIALIZATION ---
+
+async function initFirebase() {
     try {
-        // Set Firebase logging level to Debug for visibility
-        setLogLevel('debug');
-
+        // setLogLevel('Debug'); // Uncomment for debugging Firestore
         app = initializeApp(firebaseConfig);
-        db = getFirestore(app);
         auth = getAuth(app);
-        
-        // Use local persistence to maintain user state
+        db = getFirestore(app);
+
+        // Set local persistence (optional, but good practice)
         await setPersistence(auth, browserLocalPersistence);
 
-        // Sign in using the custom token if provided, otherwise sign in anonymously
+        // Check for custom token, otherwise sign in anonymously
         if (initialAuthToken) {
-            console.log("Attempting sign-in with custom token.");
             await signInWithCustomToken(auth, initialAuthToken);
         } else {
-            console.log("Attempting anonymous sign-in.");
             await signInAnonymously(auth);
         }
 
-        // Auth state change listener
+        // Auth state listener
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 userId = user.uid;
+                document.getElementById('user-info').textContent = `User: ${userId.substring(0, 8)}...`;
                 isAuthReady = true;
-                console.log("Firebase Auth Ready. User ID:", userId);
-                
-                // Set up real-time listener for player data
-                setupDataListener();
+                initFirestoreListener();
             } else {
-                console.log("No user signed in. Using default ID.");
-                userId = 'guest-' + crypto.randomUUID(); 
+                // This should ideally not happen after forced sign-in
+                userId = crypto.randomUUID(); 
+                document.getElementById('user-info').textContent = `Guest: ${userId.substring(0, 8)}...`;
                 isAuthReady = true;
-                updateUI();
+                // For guest, initialize local data and show stats
+                updateMissionUI();
+                document.getElementById('stats-overall-rating').textContent = playerData.overallRating;
             }
-            // Ensure the UI is shown only after auth is ready
-            showMainMenu();
         });
-
-    } catch (e) {
-        console.error("Firebase Initialization Error:", e);
-        isAuthReady = true;
-        userId = 'guest-fail';
-        updateUI();
-        showMainMenu();
+    } catch (error) {
+        console.error("Firebase Initialization Error:", error);
+        // Handle error gracefully for the user
+        showModal('Failed to connect to game services. Playing offline.');
+        isAuthReady = true; // Still allow game to start offline
+        updateMissionUI();
+        document.getElementById('stats-overall-rating').textContent = playerData.overallRating;
+        hideLoading();
     }
 }
 
-// --- FIRESTORE DATA HANDLING ---
+function initFirestoreListener() {
+    if (!isAuthReady || !db || !userId) return;
 
-/**
- * Constructs the Firestore path for the player's private data.
- */
-function getPlayerDocRef() {
-    if (!db || !userId) return null;
-    return doc(db, 'artifacts', appId, 'users', userId, 'playerData', 'stats');
-}
+    const userDocRef = doc(db, USER_DATA_PATH(userId));
 
-/**
- * Sets up a real-time listener for the player's stats document.
- */
-function setupDataListener() {
-    const docRef = getPlayerDocRef();
-    if (!docRef) return;
-
-    // Listen for real-time updates
-    onSnapshot(docRef, (docSnap) => {
+    // Set up real-time listener
+    onSnapshot(userDocRef, (docSnap) => {
         if (docSnap.exists()) {
-            // Data received from Firestore
-            const data = docSnap.data();
-            playerData = { ...playerData, ...data };
-            console.log("Player data updated in real-time:", playerData);
+            const fetchedData = docSnap.data();
+            
+            // Safely merge fetched data into local state
+            playerData.overallRating = fetchedData.overallRating || 75;
+            playerData.highScore = fetchedData.highScore || 0;
+            playerData.currentMission = fetchedData.currentMission || 1;
+            
+            // Safely parse missions data (must be parsed from JSON string)
+            if (fetchedData.missions && typeof fetchedData.missions === 'string') {
+                 try {
+                    playerData.missions = JSON.parse(fetchedData.missions);
+                } catch (e) {
+                    console.error("Error parsing missions JSON:", e);
+                }
+            } else if (fetchedData.missions && typeof fetchedData.missions === 'object') {
+                // Handle case where missions might not have been stringified yet (first save)
+                playerData.missions = fetchedData.missions;
+            }
+
+            console.log("Player data updated from Firestore:", playerData);
         } else {
-            console.log("No player data found. Creating default data.");
-            // If the document doesn't exist, save the default data (this creates the document)
-            savePlayerData();
+            console.log("No profile found, creating new one.");
+            savePlayerData(); // Create initial document
         }
-        updateUI();
+
+        // Update UI based on loaded data
+        updateScoreDisplays();
+        updateMissionUI();
+        document.getElementById('stats-overall-rating').textContent = playerData.overallRating;
+
+        // Game can now safely start
+        if (isLoading) {
+            init3DEnvironment();
+        }
     }, (error) => {
-        console.error("Firestore real-time listener error:", error);
+        console.error("Firestore Listener Error:", error);
+        showModal('Lost connection to game server. Data may not save.');
     });
 }
 
-/**
- * Saves the current local playerData object to Firestore.
- */
 async function savePlayerData() {
-    if (!isAuthReady || !userId) {
-        console.warn("Authentication not ready. Cannot save data.");
-        return;
-    }
-    const docRef = getPlayerDocRef();
-    if (!docRef) {
-        console.error("Could not get Firestore document reference.");
+    if (!isAuthReady || !db || !userId) {
+        console.warn("Cannot save data: Auth not ready or user ID missing.");
         return;
     }
 
-    try {
-        // Use setDoc to create or overwrite the document
-        await setDoc(docRef, playerData, { merge: true });
-        console.log("Player data successfully saved!");
-    } catch (e) {
-        console.error("Error saving player data:", e);
-    }
-}
-
-// --- UI AND SCREEN MANAGEMENT ---
-
-/**
- * Updates all screen elements with the current playerData.
- */
-function updateUI() {
-    // Check if the auth state has been determined before updating UI with user-specific data
-    if (!isAuthReady) return; 
-
-    // Helper to safely set text content
-    const safeSetText = (id, text) => {
-        const element = document.getElementById(id);
-        if (element) element.textContent = text;
+    const userDocRef = doc(db, USER_DATA_PATH(userId));
+    const dataToSave = {
+        overallRating: playerData.overallRating,
+        highScore: playerData.highScore,
+        currentMission: playerData.currentMission,
+        // Serialize missions object for safe storage in Firestore
+        missions: JSON.stringify(playerData.missions),
+        updatedAt: new Date().toISOString()
     };
 
-    // Update global user info (MANDATORY: Show full ID for collaboration)
-    safeSetText('user-info', `USER ID: ${userId || 'Guest'}`); // FIX APPLIED HERE
-    safeSetText('player-id-display', userId || 'Guest');
+    try {
+        await setDoc(userDocRef, dataToSave, { merge: true });
+    } catch (error) {
+        console.error("Error saving player data:", error);
+        showModal('Could not save your progress.');
+    }
+}
 
-    // Update MY STATS screen
-    safeSetText('stats-overall-rating', playerData.overallRating);
-    safeSetText('stats-high-score', playerData.highScore);
-    
+function updateScoreDisplays() {
+    // Check if elements exist before updating (safety check for game start)
+    if (document.getElementById('high-score-display')) {
+        document.getElementById('high-score-display').textContent = `BEST: ${playerData.highScore}`;
+    }
+    if (document.getElementById('score-display')) {
+        document.getElementById('score-display').textContent = score;
+    }
+    if (document.getElementById('shots-fired')) {
+        document.getElementById('shots-fired').textContent = `SHOTS: ${shotsFired}`;
+    }
+    if (document.getElementById('stats-high-score')) {
+        document.getElementById('stats-high-score').textContent = playerData.highScore;
+    }
+}
+
+function updateMissionUI() {
+    const mission2Button = document.getElementById('mission-2-button');
+    if (!mission2Button) return;
+
+    const progress = (playerData.currentMission - 1) * 50; // Simple progress logic (50% per mission)
     const progressBar = document.getElementById('mission-progress-bar');
     if (progressBar) {
-        // Simple progress based on overall rating (just for visual flair)
-        const progressPercent = Math.min(100, (playerData.overallRating - 75) * 4); 
-        progressBar.style.width = `${progressPercent}%`;
+        progressBar.style.width = `${Math.min(100, progress)}%`;
     }
 
-    // Update Quick Play High Score Display
-    safeSetText('high-score-display', `BEST: ${playerData.highScore}`);
-
-    // Update Mission buttons based on completion
-    const mission2Button = document.getElementById('mission-2-button');
-    if (mission2Button) {
-        mission2Button.textContent = playerData.missions[1].completed 
-            ? '2. The Rookie Contract (AVAILABLE)' 
-            : '2. The Rookie Contract (LOCKED)';
-        mission2Button.disabled = !playerData.missions[1].completed;
+    if (playerData.currentMission > 1) {
+        mission2Button.textContent = '2. The Rookie Contract (READY)';
+        mission2Button.disabled = false;
+    } else {
+        mission2Button.textContent = '2. The Rookie Contract (LOCKED)';
+        mission2Button.disabled = true;
     }
 }
 
-/**
- * Hides all main content screens and shows only the target screen.
- */
-function showScreen(screenId) {
-    const screens = [
-        'main-menu-container', 'quick-play-game-screen', 'missions-screen', 
-        'my-hub-screen', 'my-stats-screen', 'options-screen', 'quit-screen', 
-        'mission-1-screen', 'mission-2-screen'
-    ];
+function init3DEnvironment() {
+    // --- THREE.JS SETUP ---
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x333333); // Dark background for neon effect
+    renderer.shadowMap.enabled = true;
+    document.getElementById('game-container').appendChild(renderer.domElement);
+
+    // --- CANNON.JS SETUP ---
+    world = new CANNON.World();
+    world.gravity.set(0, -9.82, 0);
+    world.broadphase = new CANNON.NaiveBroadphase();
+    world.solver.iterations = 10;
+
+    // --- LIGHTING ---
+    const ambient = new THREE.AmbientLight(0x404040, 10);
+    scene.add(ambient);
     
-    screens.forEach(id => {
-        const screen = document.getElementById(id);
-        if (screen) {
-            screen.classList.add('hidden');
-            // Stop Mission 1 meter if exiting
-            if (id.includes('mission-1')) clearInterval(missionMeterInterval);
+    const spotLight = new THREE.SpotLight(0xffffff, 200, 100, Math.PI * 0.25, 0.5, 2);
+    spotLight.position.set(0, 20, 0);
+    spotLight.castShadow = true;
+    spotLight.shadow.mapSize.width = 1024;
+    spotLight.shadow.mapSize.height = 1024;
+    spotLight.shadow.camera.near = 0.5;
+    spotLight.shadow.camera.far = 50;
+    scene.add(spotLight);
+
+    // --- GROUND (CANNON & THREE) ---
+    const groundShape = new CANNON.Plane();
+    const groundBody = new CANNON.Body({ mass: 0, shape: groundShape });
+    groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2); // Rotate to horizontal
+    world.addBody(groundBody);
+
+    const groundMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(100, 100),
+        new THREE.MeshStandardMaterial({ color: 0x228B22, side: THREE.DoubleSide })
+    );
+    groundMesh.rotation.x = -Math.PI / 2;
+    groundMesh.receiveShadow = true;
+    scene.add(groundMesh);
+
+    // --- BACKBOARD & HOOP ---
+    createBackboard(0, 3.0, -10);
+    createHoop(0, 3.0, -10);
+
+    // --- PLAYER CHARACTER (for reference/camera control) ---
+    const playerShape = new CANNON.Sphere(0.5);
+    playerBody = new CANNON.Body({ mass: PLAYER_MASS, shape: playerShape, position: new CANNON.Vec3(0, 0.5, 0) });
+    world.addBody(playerBody);
+    playerBody.linearDamping = 0.9;
+    playerBody.angularDamping = 0.9;
+
+    const playerMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.5, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true, transparent: true, opacity: 0.3 })
+    );
+    scene.add(playerMesh);
+    player = playerMesh;
+    
+    // --- BASKETBALL ---
+    createBall();
+
+    // --- CAMERA SETUP ---
+    // Camera position relative to player (third-person view)
+    camera.position.set(0, 3, 5); 
+    
+    // --- EVENT LISTENERS ---
+    window.addEventListener('resize', onWindowResize, false);
+    document.addEventListener('keydown', onKeyDown, false);
+    document.addEventListener('keyup', onKeyUp, false);
+    
+    hideLoading();
+    animate();
+}
+
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+// --- 3D UTILITIES ---
+
+function createBackboard(x, y, z) {
+    // Backboard (Mesh)
+    const backboardGeo = new THREE.BoxGeometry(2, 1.5, 0.1);
+    const backboardMat = new THREE.MeshStandardMaterial({ color: 0xff00ff, metalness: 0.8, roughness: 0.2 });
+    const backboardMesh = new THREE.Mesh(backboardGeo, backboardMat);
+    backboardMesh.position.set(x, y, z);
+    backboardMesh.receiveShadow = true;
+    backboardMesh.castShadow = true;
+    scene.add(backboardMesh);
+
+    // Backboard (Physics - Mass 0, static)
+    const backboardShape = new CANNON.Box(new CANNON.Vec3(1, 0.75, 0.05));
+    const backboardBody = new CANNON.Body({ mass: 0, shape: backboardShape, position: new CANNON.Vec3(x, y, z) });
+    world.addBody(backboardBody);
+
+    // Backboard Pole
+    const poleGeo = new THREE.CylinderGeometry(0.1, 0.1, 8, 8);
+    const poleMat = new THREE.MeshStandardMaterial({ color: 0x555555 });
+    const poleMesh = new THREE.Mesh(poleGeo, poleMat);
+    poleMesh.position.set(x, y - 4.0, z);
+    poleMesh.receiveShadow = true;
+    poleMesh.castShadow = true;
+    scene.add(poleMesh);
+}
+
+function createHoop(x, y, z) {
+    // Rim (Mesh)
+    const rimGeo = new THREE.TorusGeometry(0.4, 0.05, 8, 32);
+    const rimMat = new THREE.MeshStandardMaterial({ color: 0xff4500 }); // Orange rim
+    const rimMesh = new THREE.Mesh(rimGeo, rimMat);
+    rimMesh.rotation.x = Math.PI / 2;
+    rimMesh.position.set(x, y - 0.5, z + 0.5);
+    rimMesh.castShadow = true;
+    scene.add(rimMesh);
+
+    // Rim (Physics - Static Cylinder for collision)
+    const rimShape = new CANNON.Cylinder(0.4, 0.4, 0.1, 16);
+    const rimBody = new CANNON.Body({ mass: 0, shape: rimShape, position: new CANNON.Vec3(x, y - 0.5, z + 0.5) });
+    rimBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
+    world.addBody(rimBody);
+    
+    // Score sensor (Invisible Plane beneath the rim)
+    const sensorShape = new CANNON.Box(new CANNON.Vec3(0.5, 0.01, 0.5));
+    const sensorBody = new CANNON.Body({ mass: 0, shape: sensorShape, position: new CANNON.Vec3(x, y - 0.6, z + 0.5) });
+    sensorBody.collisionResponse = false; // Doesn't affect ball physics
+    world.addBody(sensorBody);
+
+    // Set up collision event listener for scoring
+    sensorBody.addEventListener('collide', (event) => {
+        if (event.body === basketballBody) {
+            handleScore();
         }
     });
+}
 
-    const targetScreen = document.getElementById(screenId);
-    if (targetScreen) {
-        targetScreen.classList.remove('hidden');
+function createBall() {
+    // Basketball (Mesh)
+    const ballRadius = 0.25;
+    const ballGeo = new THREE.SphereGeometry(ballRadius, 32, 32);
+    const ballMat = new THREE.MeshStandardMaterial({ color: 0xff8c00, roughness: 0.6, metalness: 0.1 });
+    basketballMesh = new THREE.Mesh(ballGeo, ballMat);
+    basketballMesh.castShadow = true;
+    scene.add(basketballMesh);
+
+    // Basketball (Physics)
+    const ballShape = new CANNON.Sphere(ballRadius);
+    basketballBody = new CANNON.Body({ 
+        mass: 1, 
+        shape: ballShape, 
+        position: new CANNON.Vec3(0, 1, 5), // Initial position away from hoop
+        material: new CANNON.Material("ballMaterial")
+    });
+    world.addBody(basketballBody);
+    
+    // Add some damping to prevent endless bouncing
+    basketballBody.linearDamping = 0.1;
+    basketballBody.angularDamping = 0.5;
+}
+
+function handleScore() {
+    // Only score if the ball is currently moving through the hoop downwards
+    const isMovingDown = basketballBody.velocity.y < -0.5;
+
+    // This is a simple scoring mechanism. In a real game, you would use a more sophisticated method
+    // (e.g., raycasting to detect movement direction and a flag to prevent multiple scores per shot)
+    if (isMovingDown) {
+        // Ensure the ball is not already marked as scored for this shot
+        if (!basketballBody.userData || !basketballBody.userData.scored) {
+            score += 2;
+            basketballBody.userData = { scored: true }; // Mark the shot as scored
+            updateScoreDisplays();
+            showModal('SWISH! +2 Points!', 'neon-text-blue');
+        }
     }
 }
 
-// Menu Functions
-function showMainMenu() {
+// --- INPUT HANDLING ---
+
+function onKeyDown(event) {
+    // Check if the game screen is active before processing inputs
+    if (document.getElementById('quick-play-game-screen').classList.contains('hidden')) return;
+    
+    switch (event.code) {
+        case 'KeyW': inputState.forward = true; break;
+        case 'KeyS': inputState.backward = true; break;
+        case 'KeyA': inputState.left = true; break;
+        case 'KeyD': inputState.right = true; break;
+        case 'Space': 
+            if (canShoot) {
+                inputState.shoot = true;
+                shootBall();
+            }
+            break;
+    }
+}
+
+function onKeyUp(event) {
+     // Check if the game screen is active before processing inputs
+     if (document.getElementById('quick-play-game-screen').classList.contains('hidden')) return;
+
+    switch (event.code) {
+        case 'KeyW': inputState.forward = false; break;
+        case 'KeyS': inputState.backward = false; break;
+        case 'KeyA': inputState.left = false; break;
+        case 'KeyD': inputState.right = false; break;
+        case 'Space': inputState.shoot = false; break;
+    }
+}
+
+function shootBall() {
+    if (!canShoot || !playerBody || !basketballBody) return;
+    canShoot = false;
+    
+    shotsFired++;
+    updateScoreDisplays();
+
+    // Reset the 'scored' flag for the new shot
+    basketballBody.userData = { scored: false }; 
+
+    // Calculate shot direction (from player to hoop)
+    const playerPos = playerBody.position;
+    const hoopPos = new CANNON.Vec3(0, 3.0, -10); // Hoop center
+    
+    // Direction vector
+    let direction = new CANNON.Vec3();
+    hoopPos.vsub(playerPos, direction);
+    direction.normalize();
+    
+    // Add a vertical component for the arc
+    const shotDirection = new CANNON.Vec3(direction.x, direction.y + 0.5, direction.z);
+    shotDirection.normalize();
+
+    // Reset ball position to player's hands (a point in front of the player)
+    const ballInitialPos = new CANNON.Vec3(
+        playerPos.x + shotDirection.x * 0.5,
+        playerPos.y + 1.5,
+        playerPos.z + shotDirection.z * 0.5
+    );
+
+    // Stop the ball and reset its state before shooting
+    basketballBody.velocity.set(0, 0, 0);
+    basketballBody.angularVelocity.set(0, 0, 0);
+    basketballBody.position.copy(ballInitialPos);
+    
+    // Apply impulse (force)
+    basketballBody.applyImpulse(
+        shotDirection.scale(SHOT_FORCE + (playerData.overallRating / 20)), // Scale force by player rating
+        basketballBody.position
+    );
+    
+    // Re-enable shooting after a short cooldown
+    setTimeout(() => {
+        canShoot = true;
+    }, 1500); // 1.5 second cooldown
+}
+
+// --- GAME LOOP ---
+
+let lastTime = performance.now();
+const timeStep = 1 / 60;
+
+function animate(time) {
+    requestAnimationFrame(animate);
+
+    // Only run physics and game logic if the Quick Play screen is active
+    if (document.getElementById('quick-play-game-screen') && 
+        document.getElementById('quick-play-game-screen').classList.contains('hidden')) {
+        if (renderer) renderer.render(scene, camera);
+        return;
+    }
+    
+    if (!playerBody || !basketballBody || !world || !renderer || !camera) {
+        // Do nothing until 3D environment is initialized
+        return;
+    }
+
+    const deltaTime = (time - lastTime) / 1000;
+    lastTime = time;
+
+    // Step the physics world
+    world.step(timeStep, deltaTime, 3);
+    
+    // --- MOVEMENT LOGIC (CANNON) ---
+    
+    // Player movement direction
+    let moveVector = new THREE.Vector3(0, 0, 0);
+    if (inputState.forward) moveVector.z -= 1;
+    if (inputState.backward) moveVector.z += 1;
+    if (inputState.left) moveVector.x -= 1;
+    if (inputState.right) moveVector.x += 1;
+    moveVector.normalize();
+    
+    // Apply movement force
+    const currentVelocity = playerBody.velocity;
+    
+    // Calculate desired velocity
+    const desiredVelocity = new CANNON.Vec3(
+        moveVector.x * PLAYER_SPEED,
+        currentVelocity.y, // Maintain gravity effect
+        moveVector.z * PLAYER_SPEED
+    );
+    
+    // Calculate force required to achieve desired velocity (simple approximation)
+    let force = new CANNON.Vec3();
+    desiredVelocity.vsub(currentVelocity, force);
+    force.scale(playerBody.mass * 10, force); // Apply scaling force
+
+    // Clear horizontal velocity before applying new force to prevent "sliding"
+    playerBody.velocity.x *= 0.8;
+    playerBody.velocity.z *= 0.8;
+
+    playerBody.applyForce(force, playerBody.position);
+
+    // --- RENDER UPDATES (THREE) ---
+
+    // 1. Update Player Mesh position (if visualized)
+    player.position.copy(playerBody.position);
+    player.quaternion.copy(playerBody.quaternion);
+
+    // 2. Update Basketball Mesh position
+    basketballMesh.position.copy(basketballBody.position);
+    basketballMesh.quaternion.copy(basketballBody.quaternion);
+    
+    // 3. Update Camera position (follow the player)
+    camera.position.x = player.position.x;
+    camera.position.z = player.position.z + 5;
+    camera.position.y = player.position.y + 3;
+    
+    // Camera looks slightly forward, towards the hoop
+    camera.lookAt(0, 2.5, -10); 
+
+    // Check if ball is out of bounds (too far away)
+    if (basketballBody.position.length() > 50) {
+        resetBallPosition();
+    }
+
+    renderer.render(scene, camera);
+}
+
+function resetBallPosition() {
+    if (!basketballBody || !playerBody) return; // Safety check
+    // Reset ball to player's position
+    basketballBody.velocity.set(0, 0, 0);
+    basketballBody.angularVelocity.set(0, 0, 0);
+    basketballBody.position.set(playerBody.position.x, playerBody.position.y + 1, playerBody.position.z);
+    basketballBody.userData = { scored: false };
+    canShoot = true; // Allow shooting immediately after reset
+}
+
+// --- UI & GAME FLOW FUNCTIONS ---
+
+window.showScreen = function (id) {
+    const screens = ['main-menu-container', 'quick-play-game-screen', 'my-hub-screen', 'my-stats-screen', 'missions-screen', 'options-screen', 'quit-screen', 'mission-1-screen', 'mission-2-screen'];
+    screens.forEach(screenId => {
+        const element = document.getElementById(screenId);
+        if (element) {
+            // Quick Play is the only screen that needs to be an 'overlay' 
+            // and allow clicks to pass through if not interactive.
+            if (screenId === 'quick-play-game-screen') {
+                element.classList.toggle('hidden', screenId !== id);
+                // Stop the meter animation if a menu other than the quick play screen is showing
+                if (screenId !== id) stopMeter(true);
+                
+            } else {
+                // All other screens are modal menus
+                element.classList.toggle('hidden', screenId !== id);
+            }
+        }
+    });
+}
+
+window.showMainMenu = function () {
     showScreen('main-menu-container');
-    // Ensure the game loop is stopped when exiting Quick Play
-    isGameRunning = false;
 }
 
-function quickPlay() {
+window.quickPlay = function () {
     showScreen('quick-play-game-screen');
-    // Initialize or restart the game loop
-    if (!canvas) {
-        setupCanvas();
-    }
-    if (!isGameRunning) {
-        isGameRunning = true;
-        gameLoop();
-    }
-    resetGame(false); // Start a new session
+    // Reset game state for a new quick play session
+    resetGame(false); 
 }
 
-function loadMissions() {
-    showScreen('missions-screen');
+window.resetGame = function (shouldShowModal) {
+    // Check and update High Score upon ending the previous game
+    if (score > playerData.highScore) {
+        playerData.highScore = score;
+        savePlayerData();
+    }
+
+    score = 0;
+    shotsFired = 0;
+    updateScoreDisplays();
+    resetBallPosition();
+    
+    if (playerBody) {
+        // Reset player position closer to the action
+        playerBody.position.set(0, 0.5, 5); 
+        playerBody.velocity.set(0, 0, 0);
+        playerBody.angularVelocity.set(0, 0, 0);
+    }
+
+    if (shouldShowModal) showModal('Quick Play Reset!', 'neon-text-blue');
 }
 
-function loadMyHub() {
+window.loadMyHub = function () {
     showScreen('my-hub-screen');
-    updateUI();
+    document.getElementById('player-id-display').textContent = userId;
 }
 
-function loadMyStats() {
+window.loadMyStats = function () {
     showScreen('my-stats-screen');
-    updateUI();
+    // Data is updated via the Firestore listener
 }
 
-function loadOptions() {
+window.loadMissions = function () {
+    showScreen('missions-screen');
+    updateMissionUI();
+}
+
+window.loadOptions = function () {
     showScreen('options-screen');
 }
 
-function quitGame() {
+window.quitGame = function () {
     showScreen('quit-screen');
 }
 
-// --- QUICK PLAY (BACKYARD HOOPZ) LOGIC ---
+// --- MISSION 1 LOGIC (Meter Challenge) ---
 
-/**
- * Sets up the canvas and event listeners for the game.
- */
-function setupCanvas() {
-    canvas = document.getElementById('game-canvas');
-    if (!canvas) {
-        console.error("Canvas element not found!");
-        return;
-    }
-    ctx = canvas.getContext('2d');
-
-    // Add event listeners for shooting mechanics
-    canvas.addEventListener('mousedown', handleStart);
-    canvas.addEventListener('mousemove', handleMove);
-    canvas.addEventListener('mouseup', handleEnd);
-    
-    // Add touch listeners for mobile
-    canvas.addEventListener('touchstart', handleStart);
-    canvas.addEventListener('touchmove', handleMove);
-    canvas.addEventListener('touchend', handleEnd);
-    
-    console.log("Canvas setup complete.");
-}
-
-/**
- * Resets the ball position, score, and shot counter.
- * @param {boolean} fullReset - If true, resets score and shots. If false, just resets ball state.
- */
-function resetGame(fullReset = true) {
-    ball.x = 60;
-    ball.y = 400;
-    ball.vx = 0;
-    ball.vy = 0;
-    ball.state = 'ready';
-    ball.scoreFlag = false;
-
-    if (fullReset) {
-        gameScore = 0;
-        shotsFired = 0;
-    }
-    
-    // Update score displays
-    const scoreDisplay = document.getElementById('score-display');
-    const shotsDisplay = document.getElementById('shots-fired');
-
-    if (scoreDisplay) scoreDisplay.textContent = `SCORE: ${gameScore}`;
-    if (shotsDisplay) shotsDisplay.textContent = `SHOTS: ${shotsFired}`;
-    
-    // Redraw immediately to show the reset state
-    if (isGameRunning) {
-         drawCourt();
-         drawHoop();
-         drawBall();
-    }
-}
-
-// Input Handlers
-function getEventLocation(e) {
-    const rect = canvas.getBoundingClientRect();
-    let x, y;
-    
-    if (e.touches && e.touches.length > 0) {
-        x = e.touches[0].clientX - rect.left;
-        y = e.touches[0].clientY - rect.top;
-    } else {
-        x = e.clientX - rect.left;
-        y = e.clientY - rect.top;
-    }
-    return { x, y };
-}
-
-function handleStart(e) {
-    if (ball.state !== 'ready') return;
-    
-    const pos = getEventLocation(e);
-    // Check if click is on the ball
-    if (Math.hypot(pos.x - ball.x, pos.y - ball.y) < ballRadius) {
-        ball.state = 'dragging';
-        dragStart = pos;
-        currentDrag = pos;
-        e.preventDefault(); 
-    }
-}
-
-function handleMove(e) {
-    if (ball.state !== 'dragging') return;
-    currentDrag = getEventLocation(e);
-    e.preventDefault(); 
-}
-
-function handleEnd(e) {
-    if (ball.state !== 'dragging') return;
-    
-    const dragEnd = getEventLocation(e);
-    
-    // Calculate launch velocity (slingshot effect)
-    // The direction is opposite the drag
-    const dx = dragStart.x - dragEnd.x;
-    const dy = dragStart.y - dragEnd.y;
-    
-    // Scale the velocity (adjust the multiplier for desired power)
-    ball.vx = dx * 0.15;
-    ball.vy = dy * 0.15; 
-    
-    // Limit max velocity
-    const maxSpeed = 25;
-    const speed = Math.hypot(ball.vx, ball.vy);
-    if (speed > maxSpeed) {
-        ball.vx = (ball.vx / speed) * maxSpeed;
-        ball.vy = (ball.vy / speed) * maxSpeed;
-    }
-
-    ball.state = 'flying';
-    shotsFired++;
-    const shotsDisplay = document.getElementById('shots-fired');
-    if (shotsDisplay) shotsDisplay.textContent = `SHOTS: ${shotsFired}`;
-    e.preventDefault(); 
-}
-
-// Drawing Functions
-
-function drawCourt() {
-    // 1. Clear the canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // 2. Draw the streetball court surface (Dark Asphalt)
-    ctx.fillStyle = '#333333';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-    // 3. Draw the out-of-bounds line (White/Light Gray)
-    ctx.strokeStyle = '#CCCCCC';
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    // Sidelines
-    ctx.moveTo(10, 10);
-    ctx.lineTo(canvas.width - 10, 10);
-    ctx.lineTo(canvas.width - 10, canvas.height - 10);
-    ctx.lineTo(10, canvas.height - 10);
-    ctx.closePath();
-    ctx.stroke();
-    
-    // 4. Draw the free throw line (half-court line is skipped for backyard style)
-    ctx.strokeStyle = '#CCCCCC';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(canvas.width - 250, canvas.height - 10);
-    ctx.lineTo(canvas.width - 250, 10);
-    ctx.stroke();
-}
-
-function drawHoop() {
-    const x = hoopPosition.x;
-    const y = hoopPosition.y;
-    const w = hoopPosition.width;
-    const h = hoopPosition.height;
-
-    // 1. Backboard (Neon Pink)
-    ctx.fillStyle = 'rgba(255, 0, 255, 0.8)'; // Pink
-    ctx.shadowColor = 'rgba(255, 0, 255, 1)';
-    ctx.shadowBlur = 15;
-    ctx.fillRect(x + 10, y - 50, 10, 100);
-    
-    // 2. Rim (Neon Blue)
-    ctx.fillStyle = 'rgba(0, 196, 255, 0.8)'; // Blue
-    ctx.shadowColor = 'rgba(0, 196, 255, 1)';
-    ctx.shadowBlur = 15;
-    ctx.fillRect(x - 25, y, w + 10, h); 
-
-    // Reset shadow for other elements
-    ctx.shadowBlur = 0;
-}
-
-function drawBall() {
-    ctx.beginPath();
-    ctx.arc(ball.x, ball.y, ballRadius, 0, Math.PI * 2);
-    
-    // Orange Basketball Color
-    ctx.fillStyle = 'orange'; 
-    ctx.fill();
-    
-    // Black lines on the basketball
-    ctx.strokeStyle = 'black';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // Draw the slingshot line if dragging
-    if (ball.state === 'dragging') {
-        ctx.strokeStyle = 'rgba(255, 0, 255, 0.6)'; // Pink dotted line
-        ctx.setLineDash([5, 5]); // Dotted
-        ctx.lineWidth = 3;
-        
-        ctx.beginPath();
-        // Line from the ball (launch point) to the current drag position
-        ctx.moveTo(ball.x, ball.y);
-        ctx.lineTo(currentDrag.x, currentDrag.y);
-        ctx.stroke();
-        
-        ctx.setLineDash([]); // Reset line style
-    }
-}
-
-// Physics & Update Functions
-function updateBall() {
-    if (ball.state === 'flying') {
-        // Apply physics
-        ball.vy += GRAVITY;
-        ball.vx *= AIR_FRICTION;
-        ball.vy *= AIR_FRICTION;
-
-        ball.x += ball.vx;
-        ball.y += ball.vy;
-
-        // Wall collision (rebound)
-        if (ball.x - ballRadius < 10 || ball.x + ballRadius > canvas.width - 10) {
-            ball.vx = -ball.vx * 0.8; // Bounce with energy loss
-            ball.x = Math.max(ballRadius + 10, Math.min(canvas.width - ballRadius - 10, ball.x));
-        }
-
-        // Floor collision (stop)
-        if (ball.y + ballRadius > canvas.height - 10) {
-            ball.vy = -ball.vy * 0.7; // Bounce
-            ball.y = canvas.height - ballRadius - 10;
-            if (Math.abs(ball.vy) < 1) {
-                ball.state = 'bouncing'; // Change state to allow it to settle
-            }
-        }
-    }
-    
-    if (ball.state === 'bouncing') {
-        ball.vy += GRAVITY;
-        ball.y += ball.vy;
-        
-        // Settle on the ground
-        if (ball.y + ballRadius >= canvas.height - 10) {
-            ball.y = canvas.height - ballRadius - 10;
-            ball.vy = 0;
-            ball.vx = 0;
-            // After settling, reset to ready state
-            if (shotsFired > 0) {
-                 setTimeout(() => ball.state = 'ready', 1500); // Give player time to see the result
-            }
-        }
-    }
-
-    // HOOP/SCORING LOGIC
-    // Check for collision with the backboard (Right side of the court)
-    const backboardX = hoopPosition.x + 10;
-    const backboardY = hoopPosition.y - 50;
-    const backboardW = 10;
-    const backboardH = 100;
-    
-    // Simple collision with backboard (a static vertical rectangle)
-    if (ball.x + ballRadius > backboardX && ball.x - ballRadius < backboardX + backboardW &&
-        ball.y + ballRadius > backboardY && ball.y - ballRadius < backboardY + backboardH) {
-        
-        // Reverse X velocity if ball is approaching from the left
-        if (ball.vx > 0 && ball.x < backboardX) {
-            ball.vx = -ball.vx * 0.7; 
-        } else if (ball.vx < 0 && ball.x > backboardX + backboardW) {
-             ball.vx = -ball.vx * 0.7;
-        }
-        
-        // Increase Y velocity slightly (hit sounds flat)
-        ball.vy *= 0.8;
-    }
-    
-    // Check for scoring (passing through the rim area top-down)
-    const rimX = hoopPosition.x - 25;
-    const rimY = hoopPosition.y;
-    const rimWidth = hoopPosition.width + 10;
-    
-    // Condition 1: Ball is moving downwards
-    // Condition 2: Ball center passes the top edge of the rim
-    // Condition 3: Ball is within the horizontal range of the rim
-    if (ball.vy > 0 && ball.y - ballRadius < rimY && ball.y + ballRadius > rimY && 
-        ball.x > rimX && ball.x < rimX + rimWidth) {
-        
-        // Successful pass-through check (scoring)
-        if (!ball.scoreFlag) {
-            gameScore += 2;
-            ball.scoreFlag = true;
-            
-            // Update score UI
-            const scoreDisplay = document.getElementById('score-display');
-            if (scoreDisplay) scoreDisplay.textContent = `SCORE: ${gameScore}`;
-            
-            // Check for new High Score
-            if (gameScore > playerData.highScore) {
-                playerData.highScore = gameScore;
-                updateUI(); // Updates the BEST score display
-                savePlayerData(); // Save the new high score to Firestore
-                showMessageBox(`NEW HIGH SCORE! ${playerData.highScore} points!`, 'neon-pink');
-            } else {
-                 showMessageBox("Swish! 2 Points!", 'neon-blue');
-            }
-        }
-    } else if (ball.y > rimY + 50) {
-        // Reset score flag once the ball is well below the rim to allow new scoring
-        ball.scoreFlag = false;
-    }
-}
-
-/**
- * Main game loop for the Quick Play screen.
- */
-function gameLoop() {
-    if (!isGameRunning) return;
-
-    drawCourt();
-    drawHoop();
-    updateBall();
-    drawBall();
-
-    requestAnimationFrame(gameLoop);
-}
-
-// --- MISSION LOGIC ---
-
-let missionMeterInterval = null;
-let missionMeterValue = 0;
-let meterDirection = 1; // 1 for up, -1 for down
-
-function startMission(missionId) {
+window.startMission = function (missionId) {
     if (missionId === 1) {
         showScreen('mission-1-screen');
-        missionMeterValue = 0;
+        const feedbackEl = document.getElementById('mission-feedback');
+        if (feedbackEl) feedbackEl.textContent = '';
+        meterValue = 0;
         meterDirection = 1;
+        const pointerEl = document.getElementById('meter-pointer');
+        if (pointerEl) pointerEl.style.left = '0%';
         
-        const meterDisplay = document.getElementById('meter-display');
-        const feedback = document.getElementById('mission-feedback');
-        if(meterDisplay) meterDisplay.textContent = '0';
-        if(feedback) feedback.textContent = '';
-        
-        // Start meter animation
-        if (missionMeterInterval) clearInterval(missionMeterInterval);
-        missionMeterInterval = setInterval(updateMissionMeter, 20);
+        // Start or restart the meter animation
+        if (mission1Interval) clearInterval(mission1Interval);
+        mission1Interval = setInterval(updateMeter, 10); // 10ms update rate
     } else if (missionId === 2) {
-        // Mission 2 check
-        if (!playerData.missions[1].completed) {
-            showMessageBox("Mission 2 is LOCKED. Complete Mission 1 first!", 'neon-pink');
-            return;
+        if (playerData.currentMission > 1) {
+            showScreen('mission-2-screen');
+        } else {
+            showModal('Mission 2 is locked! Complete Mission 1 first.', 'neon-text-pink');
         }
-        showScreen('mission-2-screen');
     }
 }
 
-function updateMissionMeter() {
-    missionMeterValue += meterDirection;
+function updateMeter() {
+    const displayEl = document.getElementById('meter-display');
+    const pointerEl = document.getElementById('meter-pointer');
+    if (!displayEl || !pointerEl) return;
     
-    if (missionMeterValue >= 100) {
+    meterValue += meterDirection * 1; // Speed of meter
+    
+    if (meterValue >= 100) {
         meterDirection = -1;
-        missionMeterValue = 100;
-    } else if (missionMeterValue <= 0) {
+        meterValue = 100;
+    } else if (meterValue <= 0) {
         meterDirection = 1;
-        missionMeterValue = 0;
+        meterValue = 0;
     }
-    
-    const meterDisplay = document.getElementById('meter-display');
-    if (meterDisplay) meterDisplay.textContent = missionMeterValue;
+
+    displayEl.textContent = Math.round(meterValue);
+    pointerEl.style.left = `${meterValue}%`;
 }
 
-function stopMeter() {
-    if (missionMeterInterval) {
-        clearInterval(missionMeterInterval);
-        missionMeterInterval = null;
-    }
+window.stopMeter = function () {
+    if (!mission1Interval) return;
+    clearInterval(mission1Interval);
+    mission1Interval = null;
     
-    const feedback = document.getElementById('mission-feedback');
-    if (!feedback) return;
+    const feedbackEl = document.getElementById('mission-feedback');
+    if (!feedbackEl) return;
     
-    // Scoring logic for Mission 1 (95 is perfect)
-    let score = 0;
-    if (missionMeterValue >= 90 && missionMeterValue <= 100) {
-        score = 100;
-        feedback.textContent = 'PERFECT PASS! (+5 Overall)';
-        feedback.classList.remove('text-red-500');
-        feedback.classList.add('text-neon-blue');
-        playerData.overallRating += 5;
-    } else if (missionMeterValue >= 80 || missionMeterValue <= 10) {
-        score = 50;
-        feedback.textContent = 'GOOD! (+2 Overall)';
-        feedback.classList.remove('text-red-500');
-        feedback.classList.add('text-neon-pink');
-        playerData.overallRating += 2;
+    // Sweet spot: 80% to 90% (inclusive)
+    if (meterValue >= 80 && meterValue <= 90) {
+        feedbackEl.textContent = 'PERFECT SHOT! Mission Complete!';
+        feedbackEl.className = 'text-xl font-bold mt-4 neon-text-blue';
+        completeMission(1);
+    } else if (meterValue > 70 && meterValue < 95) {
+         feedbackEl.textContent = 'Good Shot. Close, but no cigar. Try again.';
+         feedbackEl.className = 'text-xl font-bold mt-4 text-yellow-500';
     } else {
-        feedback.textContent = 'MISS! (No change)';
-        feedback.classList.remove('text-neon-blue', 'text-neon-pink');
-        feedback.classList.add('text-red-500');
+        feedbackEl.textContent = 'Off Target. Practice makes perfect.';
+        feedbackEl.className = 'text-xl font-bold mt-4 neon-text-pink';
     }
+}
 
-    if (score > 0) {
-        playerData.missions[1].completed = true;
+function completeMission(missionId) {
+    if (playerData.missions[missionId] && !playerData.missions[missionId].completed) {
+        playerData.missions[missionId].completed = true;
+        // Ensure bonus value is calculated before increasing overallRating
+        const bonus = playerData.missions[missionId].ratingBonus; 
+        
+        playerData.overallRating += bonus;
+        playerData.currentMission = missionId + 1; // Unlock next mission
         savePlayerData();
-        updateUI();
+        showModal(`Mission ${missionId} Completed! Overall Rating increased by ${bonus} to ${playerData.overallRating}!`, 'neon-text-blue');
     }
 }
 
-function completeMission2(option) {
-    let resultMessage = '';
-    
-    if (option === 1) {
-        // Option 1: Small Bonus, High Incentives (+5 Overall)
-        playerData.overallRating += 5;
-        resultMessage = "Smart choice! You earned a +5 OVERALL boost from your incentives!";
-    } else {
-        // Option 2: Large Bonus, Low Incentives (+1 Overall)
-        playerData.overallRating += 1;
-        resultMessage = "A safe choice. You earned a +1 OVERALL boost.";
+window.completeMission2 = function (option) {
+    if (playerData.missions[2].completed) {
+        showModal("Mission 2 is already complete!", 'text-yellow-500');
+        loadMissions();
+        return;
     }
 
-    playerData.missions[2].completed = true;
-    savePlayerData();
-    updateUI();
-    showMessageBox(resultMessage, 'neon-blue');
+    const bonus = option === 1 ? 5 : 1;
+    playerData.missions[2].ratingBonus = bonus;
+    
+    // This is just a simulated choice; completion is handled the same way
+    completeMission(2);
     showMainMenu();
 }
 
-// --- UTILITIES (Custom Modal) ---
+// --- UTILITIES ---
 
-let modalTimeout;
+function hideLoading() {
+    isLoading = false;
+    const loadingOverlay = document.getElementById('loading-overlay');
+    if (loadingOverlay) {
+        loadingOverlay.style.opacity = '0';
+        // Give time for opacity transition before hiding
+        setTimeout(() => loadingOverlay.classList.add('hidden'), 300);
+    }
+}
 
-/**
- * Displays a custom modal message.
- * @param {string} message - The text to display.
- * @param {string} color - 'neon-pink' or 'neon-blue' to style the modal.
- */
-function showMessageBox(message, color = 'neon-blue') {
-    const modal = document.getElementById('message-modal');
-    const box = document.getElementById('message-box');
-    const text = document.getElementById('modal-text');
+function showModal(message, styleClass = 'neon-text-pink') {
+    const modalEl = document.getElementById('message-modal');
+    const boxEl = document.getElementById('message-box');
+    const textEl = document.getElementById('modal-text');
+
+    if (!modalEl || !boxEl || !textEl) return;
+
+    textEl.textContent = message;
+    textEl.className = `text-xl font-bold ${styleClass}`;
+    boxEl.style.animation = 'pulse 1s infinite alternate';
     
-    if (modal && box && text) {
-        text.textContent = message;
-        
-        // Remove existing shadow classes
-        box.classList.remove('shadow-pink-500/70', 'shadow-blue-500/70');
-        
-        // Apply color styling
-        if (color === 'neon-pink') {
-            box.style.borderColor = 'var(--neon-pink)';
-            box.classList.add('shadow-pink-500/70');
-            // Re-apply animation for pulsing color change
-            box.style.animation = 'none';
-            void box.offsetHeight; // Trigger reflow
-            box.style.animation = 'pulse 0.8s ease-in-out infinite alternate';
-        } else {
-            box.style.borderColor = 'var(--neon-blue)';
-            box.classList.add('shadow-blue-500/70');
-            // Remove pulsing for blue
-            box.style.animation = 'none';
+    modalEl.classList.remove('hidden');
+    modalEl.onclick = () => {
+        modalEl.classList.add('hidden');
+        boxEl.style.animation = 'none';
+        modalEl.onclick = null;
+    };
+
+    // Auto-hide after 3 seconds if not clicked
+    setTimeout(() => {
+        if (!modalEl.classList.contains('hidden')) {
+            modalEl.classList.add('hidden');
+            boxEl.style.animation = 'none';
+            modalEl.onclick = null;
         }
-        
-        modal.style.display = 'flex';
-        modal.classList.remove('hidden');
-
-        // Automatically hide the message box after a few seconds
-        clearTimeout(modalTimeout);
-        modalTimeout = setTimeout(hideMessageBox, 3000); 
-    }
+    }, 3000);
 }
-
-function hideMessageBox() {
-    const modal = document.getElementById('message-modal');
-    if (modal) {
-        modal.style.display = 'none';
-        modal.classList.add('hidden');
-    }
-}
-
-// --- GLOBAL EXPOSURE (FIX FOR ONCLICK) ---
-// This is critical when using <script type="module">
-// It ensures that the functions called by inline 'onclick' handlers are available globally.
-window.showMainMenu = showMainMenu;
-window.quickPlay = quickPlay;
-window.loadMissions = loadMissions;
-window.loadMyHub = loadMyHub;
-window.loadMyStats = loadMyStats;
-window.loadOptions = loadOptions;
-window.quitGame = quitGame;
-window.resetGame = resetGame;
-window.startMission = startMission;
-window.stopMeter = stopMeter;
-window.completeMission2 = completeMission2;
-window.showMessageBox = showMessageBox;
-window.hideMessageBox = hideMessageBox;
-
 
 // --- START APP ---
-// Wait for the window to load before initializing Firebase and the UI.
-window.onload = function() {
-    // Canvas is part of the DOM, so ensure it's set up before quickPlay is ever called
-    setupCanvas(); 
-    initApp();
-    // showMainMenu will be called inside onAuthStateChanged to ensure user context is ready
+window.onload = function () {
+    // First, initialize Firebase and authentication
+    initFirebase();
+    // init3DEnvironment will be called after Firestore data is loaded
 }
