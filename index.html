@@ -3,315 +3,470 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Backyard Hoopz 3D</title>
-    <!-- Load Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Load Three.js (3D Rendering) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <!-- Load Cannon.js (3D Physics Engine) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
-    
-    <!-- === START OF STYLE.CSS CONTENT === -->
+    <title>The G.O.A.T. Project: 3D Arcade</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/js/all.min.js" crossorigin="anonymous"></script>
+
     <style>
+        /*
+         * Complete CSS Code for The G.O.A.T. Project (Neon Arcade Theme)
+         * Integrated directly from user-provided content.
+        */
+        @import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@400;700;900&display=swap');
+
         :root {
+            --neon-blue: #00c4ff;
             --neon-pink: #ff00ff;
-            --neon-blue: #00ffff;
-            --dark-bg: #121212;
-        }
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--dark-bg);
-            color: white;
-            margin: 0;
-            overflow: hidden;
-        }
-        #game-container {
-            position: relative;
-            width: 100vw;
-            height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        canvas {
-            display: block;
-            width: 100%;
-            height: 100%;
-        }
-        .ui-container {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-        }
-        /* New class for OPAQUE, centered menus */
-        .ui-menu {
-            pointer-events: auto;
-            background: rgba(18, 18, 18, 0.95);
-            backdrop-filter: blur(5px);
-            max-width: 90%;
-            max-height: 90%;
-            overflow-y: auto;
-            border-radius: 1rem;
-            border: 2px solid var(--neon-pink);
-            box-shadow: 0 0 20px rgba(255, 0, 255, 0.5);
-            transition: opacity 0.3s ease-in-out;
-            z-index: 100;
-        }
-        /* Class for the Game screen, which is a transparent overlay */
-        .ui-game-overlay {
-            pointer-events: none;
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 90;
-        }
-        .ui-game-overlay .interactive {
-             pointer-events: auto;
-        }
-        .neon-button {
-            transition: all 0.1s ease;
-            text-shadow: 0 0 5px white, 0 0 10px var(--neon-blue);
-            box-shadow: 0 0 10px var(--neon-blue);
-            border: 1px solid var(--neon-blue);
-            background-color: rgba(0, 255, 255, 0.1);
-        }
-        .neon-button:hover {
-            text-shadow: 0 0 8px white, 0 0 15px var(--neon-pink);
-            box-shadow: 0 0 15px var(--neon-pink);
-            border-color: var(--neon-pink);
-            background-color: rgba(255, 0, 255, 0.2);
-        }
-        .neon-text-pink {
-            color: var(--neon-pink);
-            text-shadow: 0 0 5px var(--neon-pink);
-        }
-        .neon-text-blue {
-            color: var(--neon-blue);
-            text-shadow: 0 0 5px var(--neon-blue);
-        }
-        .neon-border-pink {
-            border-color: var(--neon-pink);
-            box-shadow: 0 0 10px var(--neon-pink);
-        }
-        .hidden {
-            display: none !important;
+            --dark-bg: #0a0a1e;
+            --dark-section: rgba(10, 10, 30, 0.9);
         }
 
-        /* Loading Indicator */
+        /* GLOBAL STYLING */
+        body {
+            font-family: 'Exo 2', sans-serif;
+            color: white;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column; 
+            min-height: 100vh;
+            background-color: #000; 
+            background-image: linear-gradient(rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.9)), url('https://placehold.co/1920x1080/0d0d0d/ffffff?text=NEON+CITY+SKYLINE');
+            background-size: cover;
+            background-position: bottom center;
+            background-repeat: no-repeat;
+            position: relative; /* Needed for positioning the canvas/menu correctly */
+        }
+        
+        /* Loading Overlay Styling */
         #loading-overlay {
-            position: absolute;
+            position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.8);
+            background-color: var(--dark-bg);
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
-            z-index: 200;
+            z-index: 9999;
+            transition: opacity 0.5s ease;
         }
         .spinner {
-            border: 8px solid rgba(255, 255, 255, 0.1);
-            border-top: 8px solid var(--neon-blue);
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid var(--neon-blue);
             border-radius: 50%;
-            width: 60px;
-            height: 60px;
+            width: 50px;
+            height: 50px;
             animation: spin 1s linear infinite;
+            margin-bottom: 20px;
         }
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
 
-        /* Custom Modal */
-        #message-modal {
-            background-color: rgba(0, 0, 0, 0.5);
-            z-index: 500;
+        /* Game Container for Canvas and Scores */
+        #game-container {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 5;
+            /* Canvas will be appended here */
         }
-        #message-box {
-            border-radius: 0.75rem;
-            padding: 1.5rem;
-            background-color: var(--dark-bg);
-            border-width: 2px;
+
+        /* Canvas Styling (Placeholder, will be styled by Three.js renderer size) */
+        canvas {
+            display: block;
+            border: 3px solid var(--neon-pink);
+            box-shadow: 0 0 30px rgba(255, 0, 255, 0.5);
+            background-color: #1a1a1a; 
+            max-width: 100%;
+        }
+
+        /* HUD OVERLAY */
+        #hud-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 10px;
+            z-index: 10;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none; /* Allows clicks to pass to canvas/game */
+        }
+        .hud-item {
+            background: rgba(10, 10, 30, 0.7);
+            padding: 5px 15px;
+            border-radius: 5px;
+            border: 1px solid var(--neon-blue);
+            font-size: 1.1em;
+            text-shadow: 0 0 5px var(--neon-blue);
+            pointer-events: auto; /* Re-enable pointer events for the buttons/info */
+        }
+
+        /* --- MENU/SUB-SCREEN STYLING (The rest of the user-provided CSS) --- */
+        .missions-log-container,
+        .my-player-container,
+        .options-container,
+        .quit-container,
+        .mission-screen,
+        .quick-play-game-screen { /* Added quick-play-game-screen for the pause menu functionality */
+            background: var(--dark-section);
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(0, 196, 255, 0.3);
+            width: 90%; 
+            max-width: 450px; 
             text-align: center;
+            border: 1px solid var(--neon-blue);
+            min-height: 400px; 
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 50; 
+            display: none; /* Hidden by default */
         }
+        
+        .main-menu-container {
+            /* Special styling for the main menu to cover the whole screen */
+            width: 100%;
+            height: 100vh;
+            max-width: none;
+            padding: 0;
+            border: none;
+            background: none;
+            box-shadow: none;
+            display: none; /* Hidden until loaded */
+            flex-direction: column;
+            justify-content: space-between; 
+            align-items: center; 
+            position: fixed; /* Fix to viewport */
+            top: 0;
+            left: 0;
+            z-index: 40;
+        }
+
+        /* Show initial screen */
+        .show { display: flex !important; }
+        .hidden { display: none !important; }
+
+        /* ... [All other CSS rules from the previous response] ... */
+        .main-menu-container .main-title {
+            font-size: 5em;
+            color: var(--neon-blue); 
+            text-shadow: 0 0 15px rgba(0, 196, 255, 0.8), 0 0 5px rgba(0, 196, 255, 0.5);
+            letter-spacing: 2px;
+            margin-top: 50px;
+            text-align: center;
+            line-height: 1;
+        }
+
+        @media (max-width: 600px) {
+            .main-menu-container .main-title {
+                font-size: 3em;
+                margin-top: 20px;
+            }
+        }
+
+        .menu-bar {
+            display: flex;
+            justify-content: center;
+            width: 100%;
+            padding: 20px 0;
+            background: var(--dark-section);
+            border-top: 1px solid var(--neon-blue);
+            box-shadow: 0 0 30px rgba(0, 196, 255, 0.3);
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 60;
+        }
+
+        @media (max-width: 600px) {
+            .menu-bar {
+                flex-wrap: wrap; 
+                padding: 10px 0;
+                gap: 5px;
+            }
+        }
+
+        .main-menu-container .menu-button {
+            width: 180px; 
+            text-align: center;
+            margin: 0 10px; 
+            padding: 15px 30px;
+            font-size: 1.2em;
+        }
+
+        @media (max-width: 600px) {
+            .main-menu-container .menu-button {
+                width: 45%;
+                margin: 5px;
+                padding: 10px 15px;
+                font-size: 1em;
+            }
+        }
+
+
+        .missions-log-container h2, 
+        .my-player-container h2, 
+        .options-container h2,
+        .mission-screen h2 {
+            font-size: 2em;
+            border-bottom: 2px solid var(--neon-pink); 
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+            letter-spacing: 1px;
+            color: var(--neon-pink);
+        }
+
+        .menu-button, .neon-btn {
+            background-color: rgba(30, 30, 70, 0.8); 
+            color: var(--neon-blue);
+            border: 1px solid var(--neon-blue); 
+            padding: 15px 30px;
+            margin: 10px 0;
+            cursor: pointer;
+            font-size: 1.2em;
+            border-radius: 5px;
+            transition: all 0.2s ease;
+            width: 100%; 
+            text-align: left;
+        }
+
+        .menu-button:hover, .neon-btn:hover {
+            background-color: var(--neon-blue); 
+            color: var(--dark-bg); 
+            box-shadow: 0 0 20px rgba(0, 196, 255, 0.5);
+        }
+
+        .neon-btn {
+            width: auto;
+            text-align: center;
+            padding: 10px 20px;
+        }
+
+        .mission-item, .contract-button {
+            background-color: rgba(30, 30, 70, 0.8);
+            color: white;
+            border: 1px solid var(--neon-pink);
+            padding: 12px 20px;
+            margin: 8px 0;
+            cursor: pointer;
+            font-size: 1em;
+            border-radius: 5px;
+            transition: all 0.2s ease;
+            width: 100%;
+            text-align: left;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .mission-item span:first-child { flex-grow: 1; }
+        .mission-item span:last-child { color: var(--neon-blue); font-weight: bold; }
+
+        .mission-item:hover, .contract-button:hover {
+            background-color: rgba(255, 0, 255, 0.2);
+            box-shadow: 0 0 15px rgba(255, 0, 255, 0.6);
+        }
+
+        .my-player-container p {
+            text-align: left;
+            margin: 10px 0;
+            font-size: 1.1em;
+        }
+
+        .progress-bar-container {
+            width: 100%;
+            height: 15px;
+            background-color: #222;
+            border: 1px solid var(--neon-blue);
+            border-radius: 5px;
+            margin: 20px 0;
+            overflow: hidden; 
+        }
+
+        .progress-bar {
+            height: 100%;
+            width: 0%;
+            background-color: var(--neon-pink);
+            transition: width 0.5s ease-in-out;
+        }
+        
+        #user-id-display {
+            font-size: 0.8em;
+            color: rgba(0, 196, 255, 0.5);
+            margin-top: 10px;
+            word-wrap: break-word;
+            text-align: center;
+            position: absolute;
+            top: 5px;
+            right: 10px;
+            max-width: 100px;
+            z-index: 50;
+        }
+
+        /* MISSION 1 & QUICK PLAY: Skill Button */
+        .skill-button {
+            background-color: var(--neon-pink);
+            color: var(--dark-bg);
+            border: none;
+            padding: 20px 40px;
+            cursor: pointer;
+            font-size: 1.5em;
+            font-weight: bold;
+            border-radius: 5px;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+        }
+
+        .skill-button:hover {
+            background-color: var(--neon-blue);
+            color: var(--dark-bg);
+            box-shadow: 0 0 20px rgba(0, 196, 255, 0.5);
+        }
+
+        /* Custom Modal Styling */
+        #message-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        #message-box {
+            background: var(--dark-section);
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 40px rgba(255, 0, 255, 0.7);
+            border: 2px solid var(--neon-pink);
+            text-align: center;
+            max-width: 350px;
+            animation: pulse 0.8s ease-in-out infinite alternate;
+        }
+
+        .modal-text {
+            font-size: 1.1em;
+            margin-bottom: 20px;
+        }
+
         @keyframes pulse {
-            0% { box-shadow: 0 0 15px var(--neon-pink); }
-            100% { box-shadow: 0 0 30px var(--neon-pink); }
+            from { box-shadow: 0 0 20px rgba(255, 0, 255, 0.5); }
+            to { box-shadow: 0 0 40px rgba(255, 0, 255, 0.7); }
         }
     </style>
-    <!-- === END OF STYLE.CSS CONTENT === -->
 </head>
 <body>
-    <!-- === START OF HTML STRUCTURE CONTENT === -->
-    <div id="game-container">
-        <!-- Three.js Canvas will be appended here -->
+
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <h3 id="loading-status">Connecting to the Grid...</h3>
     </div>
 
-    <!-- UI Overlay -->
-    <div class="ui-container flex justify-center items-center">
-        <!-- Global Info -->
-        <div class="absolute top-4 left-4 text-xs">
-            <div id="user-info" class="neon-text-blue">Loading User...</div>
-            <div id="high-score-display" class="neon-text-pink">BEST: 0</div>
-            <div id="shots-fired" class="neon-text-pink">SHOTS: 0</div>
-        </div>
-        
-        <!-- Score Display -->
-        <div class="absolute top-4 right-4 text-xl font-bold p-2 px-4 rounded-full neon-text-pink border-2 border-neon-pink">
-            SCORE: <span id="score-display">0</span>
-        </div>
-
-        <!-- Main Menu Screen (Visible on start) -->
-        <div id="main-menu-container" class="ui-menu w-full md:w-96 p-8 text-center flex flex-col space-y-4">
-            <h1 class="text-4xl font-extrabold mb-6 neon-text-blue">BACKYARD HOOPZ 3D</h1>
-            <button class="neon-button text-lg p-3 w-full rounded-lg" onclick="quickPlay()">QUICK PLAY (3D)</button>
-            <button class="neon-button text-lg p-3 w-full rounded-lg" onclick="loadMissions()">MISSIONS</button>
-            <button class="neon-button text-lg p-3 w-full rounded-lg" onclick="loadMyHub()">MY HUB</button>
-            <button class="neon-button text-lg p-3 w-full rounded-lg" onclick="loadOptions()">OPTIONS</button>
-            <button class="neon-button text-lg p-3 w-full rounded-lg text-red-400" onclick="quitGame()">QUIT</button>
-        </div>
-
-        <!-- Quick Play Screen (Hidden by default) -->
-        <div id="quick-play-game-screen" class="ui-game-overlay hidden">
-            <div class="interactive absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-4">
-                <button class="neon-button text-sm p-3 rounded-lg" onclick="resetGame(true)">RESTART GAME</button>
-                <button class="neon-button text-sm p-3 rounded-lg" onclick="showMainMenu()">BACK TO MENU</button>
-            </div>
-            <!-- Instructions for 3D game -->
-            <div class="interactive absolute top-20 left-1/2 transform -translate-x-1/2 p-2 bg-gray-900 bg-opacity-70 rounded neon-text-blue text-sm">
-                WASD to Move | SPACE to Shoot!
-            </div>
-        </div>
-
-        <!-- My Hub Screen -->
-        <div id="my-hub-screen" class="ui-menu hidden w-full md:w-96 p-8 text-center flex flex-col space-y-4">
-            <h2 class="text-3xl font-bold mb-4 neon-text-pink">MY HUB</h2>
-            <p class="neon-text-blue text-sm">Player ID: <span id="player-id-display">Guest</span></p>
-            <button class="neon-button text-lg p-3 w-full rounded-lg" onclick="loadMyStats()">VIEW STATS</button>
-            <button class="neon-button text-lg p-3 w-full rounded-lg" onclick="loadMissions()">MISSION CONTROL</button>
-            <button class="neon-button text-lg p-3 w-full rounded-lg mt-6" onclick="showMainMenu()">MAIN MENU</button>
-        </div>
-
-        <!-- My Stats Screen -->
-        <div id="my-stats-screen" class="ui-menu hidden w-full md:w-96 p-8 text-center flex flex-col space-y-4">
-            <h2 class="text-3xl font-bold mb-4 neon-text-blue">MY STATS</h2>
-            <div class="text-left space-y-2">
-                <p class="text-xl neon-text-pink">Overall Rating: <span id="stats-overall-rating">75</span></p>
-                <p class="text-xl neon-text-blue">High Score: <span id="stats-high-score">0</span></p>
-            </div>
-            <div class="mt-4">
-                <h3 class="text-xl neon-text-pink mb-2">SEASON PROGRESS</h3>
-                <div class="w-full bg-gray-700 rounded-full h-3">
-                    <div id="mission-progress-bar" class="bg-gradient-to-r from-neon-blue to-neon-pink h-3 rounded-full" style="width: 0%"></div>
-                </div>
-            </div>
-            <button class="neon-button text-lg p-3 w-full rounded-lg mt-6" onclick="loadMyHub()">BACK TO HUB</button>
-        </div>
-        
-        <!-- Missions Screen -->
-        <div id="missions-screen" class="ui-menu hidden w-full md:w-96 p-8 text-center flex flex-col space-y-4">
-            <h2 class="text-3xl font-bold mb-4 neon-text-pink">MISSION CONTROL</h2>
-            <p class="text-sm text-gray-400">Boost your Overall Rating by completing challenges!</p>
-            <button class="neon-button text-lg p-3 w-full rounded-lg" onclick="startMission(1)">1. The Jump Start</button>
-            <button id="mission-2-button" class="neon-button text-lg p-3 w-full rounded-lg" onclick="startMission(2)" disabled>2. The Rookie Contract (LOCKED)</button>
-            <button class="neon-button text-lg p-3 w-full rounded-lg mt-6" onclick="showMainMenu()">MAIN MENU</button>
-        </div>
-
-        <!-- Mission 1 Screen -->
-        <div id="mission-1-screen" class="ui-menu hidden w-full md:w-96 p-8 text-center flex flex-col space-y-4">
-            <h2 class="text-3xl font-bold mb-4 neon-text-blue">MISSION 1: THE JUMP START</h2>
-            <p class="text-lg text-gray-300">Test your passing accuracy by hitting the meter's sweet spot!</p>
-            <div class="text-6xl font-bold my-4 neon-text-pink" id="meter-display">0</div>
-            <div class="w-full h-10 bg-gray-700 relative rounded-full">
-                <!-- Sweet Spot Indicator -->
-                <div class="absolute inset-y-0 left-[80%] w-[10%] bg-green-500 opacity-50"></div>
-                <!-- Meter Pointer -->
-                <div id="meter-pointer" class="absolute h-full w-2 bg-white rounded-full transition-all duration-200" style="left: 0%"></div>
-            </div>
-            <button class="neon-button text-lg p-3 w-full rounded-lg" onclick="stopMeter()">STOP METER</button>
-            <p id="mission-feedback" class="text-xl font-bold mt-4"></p>
-            <button class="neon-button text-sm p-3 w-full rounded-lg mt-6" onclick="loadMissions()">BACK TO MISSIONS</button>
-        </div>
-
-        <!-- Mission 2 Screen -->
-        <div id="mission-2-screen" class="ui-menu hidden w-full md:w-96 p-8 text-center flex flex-col space-y-4">
-            <h2 class="text-3xl font-bold mb-4 neon-text-pink">MISSION 2: THE ROOKIE CONTRACT</h2>
-            <p class="text-lg text-gray-300">Choose your contract deal:</p>
-            <button class="neon-button text-lg p-3 w-full rounded-lg" onclick="completeMission2(1)">OPTION A: Small Bonus, High Incentives (+5 Overall)</button>
-            <button class="neon-button text-lg p-3 w-full rounded-lg" onclick="completeMission2(2)">OPTION B: Large Bonus, Low Incentives (+1 Overall)</button>
-            <button class="neon-button text-sm p-3 w-full rounded-lg mt-6" onclick="loadMissions()">BACK TO MISSIONS</button>
-        </div>
-
-        <!-- Options Screen -->
-        <div id="options-screen" class="ui-menu hidden w-full md:w-96 p-8 text-center flex flex-col space-y-4">
-            <h2 class="text-3xl font-bold mb-4 neon-text-blue">OPTIONS</h2>
-            <p class="text-sm text-gray-400">Settings coming soon...</p>
-            <button class="neon-button text-lg p-3 w-full rounded-lg mt-6" onclick="showMainMenu()">MAIN MENU</button>
-        </div>
-
-        <!-- Quit Screen -->
-        <div id="quit-screen" class="ui-menu hidden w-full md:w-96 p-8 text-center flex flex-col space-y-4">
-            <h2 class="text-3xl font-bold mb-4 neon-text-pink">GAME OVER</h2>
-            <p class="text-lg text-gray-300">Thanks for playing Backyard Hoopz 3D!</p>
-            <button class="neon-button text-lg p-3 w-full rounded-lg mt-6" onclick="showMainMenu()">MAIN MENU</button>
-        </div>
+    <div id="hud-overlay" class="hidden">
+        <div id="score-display" class="hud-item">SCORE: 0</div>
+        <div id="shots-fired" class="hud-item">SHOTS: 0</div>
+        <div id="high-score-display" class="hud-item">BEST: 0</div>
     </div>
     
-    <!-- Custom Modal for Alerts (No alert() allowed) -->
-    <div id="message-modal" class="hidden fixed inset-0 flex justify-center items-center">
-        <div id="message-box" class="neon-border-pink shadow-pink-500/70">
-            <p id="modal-text" class="text-xl font-bold"></p>
+    <div id="game-container">
+        </div>
+
+    <div id="main-menu" class="main-menu-container">
+        <h1 class="main-title">THE G.O.A.T. PROJECT</h1>
+        <div id="user-info" class="hud-item" style="position: absolute; top: 10px; right: 10px; z-index: 70;">User: Connecting...</div>
+        <div class="menu-bar">
+            <button class="menu-button" onclick="showScreen('my-hub-screen')"><i class="fas fa-user-tie"></i> MY HUB</button>
+            <button class="menu-button" onclick="showScreen('missions-screen')"><i class="fas fa-list-check"></i> MISSIONS</button>
+            <button class="menu-button" onclick="quickPlay()"><i class="fas fa-running"></i> QUICK PLAY</button>
+            <button class="menu-button" onclick="showScreen('options-screen')"><i class="fas fa-sliders"></i> OPTIONS</button>
+            <button class="menu-button" onclick="showModal('System Shutdown', 'This feature is not implemented yet.')"><i class="fas fa-right-from-bracket"></i> QUIT</button>
         </div>
     </div>
 
-    <!-- Loading Overlay -->
-    <div id="loading-overlay">
-        <div class="text-center">
-            <div class="spinner mb-4"></div>
-            <p class="text-lg neon-text-blue">LOADING 3D COURT...</p>
+    <div id="my-hub-screen" class="my-player-container hidden">
+        <h2>MY HUB</h2>
+        <p><strong>Overall Rating:</strong> <span id="stats-overall-rating">75</span></p>
+        <p><strong>High Score:</strong> <span id="stats-high-score">0</span></p>
+        <div class="progress-bar-container"><div id="mission-progress-bar" class="progress-bar"></div></div>
+        <button class="neon-btn" onclick="showScreen('main-menu')">BACK TO MAIN MENU</button>
+    </div>
+
+    <div id="missions-screen" class="missions-log-container hidden">
+        <h2>MISSIONS LOG</h2>
+        <div id="mission-list">
+            <button class="mission-item" onclick="startMission(1)">
+                <span>1. The Meter Challenge</span>
+                <span><i class="fas fa-lock-open"></i></span>
+            </button>
+            <button id="mission-2-button" class="mission-item" onclick="startMission(2)">
+                <span>2. The Rookie Contract (LOCKED)</span>
+                <span><i class="fas fa-lock"></i></span>
+            </button>
+        </div>
+        <button class="neon-btn" onclick="showScreen('main-menu')">RETURN</button>
+    </div>
+
+    <div id="mission-1-screen" class="mission-screen hidden">
+        <h2>Mission 1: The Meter Challenge</h2>
+        <p>Tap the meter as close to 85% as possible to complete the mission.</p>
+        <div id="meter-display">--</div>
+        <div id="meter-container" style="position: relative; width: 100%; height: 20px; background: #333; border: 1px solid var(--neon-blue); border-radius: 5px; margin-bottom: 20px;">
+            <div id="meter-target" style="position: absolute; left: 80%; width: 10%; height: 100%; background: rgba(0, 196, 255, 0.5); border-left: 1px solid var(--neon-blue);"></div>
+            <div id="meter-pointer" style="position: absolute; left: 0; width: 5px; height: 100%; background: var(--neon-pink); box-shadow: 0 0 5px var(--neon-pink);"></div>
+        </div>
+        <button class="skill-button" onclick="stopMeter()">STOP METER</button>
+        <p id="mission-feedback" style="margin-top: 20px; font-weight: bold;"></p>
+        <button class="neon-btn" style="margin-top: 20px;" onclick="showScreen('missions-screen')">BACK</button>
+    </div>
+
+    <div id="message-modal" class="hidden">
+        <div id="message-box">
+            <h3 id="modal-title" style="color: var(--neon-pink);"></h3>
+            <p id="modal-text" class="modal-text"></p>
+            <button id="modal-ok-btn" class="neon-btn" onclick="hideModal()">OKAY</button>
         </div>
     </div>
-    <!-- === END OF HTML STRUCTURE CONTENT === -->
 
-    <!-- === START OF SCRIPT.JS CONTENT (Module Type) === -->
+
     <script type="module">
-        // --- FIREBASE IMPORTS ---
+        // --- LIBRARY IMPORTS ---
+        // Firebase (Auth, Firestore)
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { 
-            getAuth, 
-            signInAnonymously, 
-            signInWithCustomToken, 
-            onAuthStateChanged,
-            setPersistence,
-            browserLocalPersistence
-        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { 
-            getFirestore, 
-            doc, 
-            setDoc, 
-            onSnapshot, 
-            setLogLevel
-        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // Three.js (3D Rendering)
+        import * as THREE from 'https://unpkg.com/three@0.137.0/build/three.module.js';
+        
+        // Cannon.js (Physics)
+        import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.19.0/dist/cannon-es.js';
 
-        // --- GLOBAL FIREBASE & GAME STATE ---
-
-        // IMPORTANT: Global variables provided by the Canvas environment
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        // --- GLOBAL CONFIGURATION (MOCK PLATFORM VARIABLES) ---
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'arcade-default-app';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: 'MOCK_API_KEY', authDomain: 'mock-domain.firebaseapp.com', projectId: 'mock-project' };
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
-        let app;
-        let db;
-        let auth;
+        // --- GAME STATE ---
+        let app, db, auth;
         let userId = null;
-        let isAuthReady = false;
-        let isLoading = true;
+        let gameInitialized = false;
 
         // Player Data State (Local)
         let playerData = {
@@ -323,174 +478,224 @@
                 2: { completed: false, ratingBonus: 0 }
             },
         };
-
         const USER_DATA_PATH = (uid) => `artifacts/${appId}/users/${uid}/gameData/playerProfile`;
 
-        // --- THREE.JS & CANNON.JS SETUP ---
-        let scene, camera, renderer;
-        let world; // Cannon.js world
-        let basketballMesh, basketballBody;
-        let player, playerVelocity;
+        // --- 3D & PHYSICS STATE ---
+        let scene, camera, renderer, world;
+        let playerBody, basketballBody, basketballMesh;
         let inputState = { forward: false, backward: false, left: false, right: false, shoot: false };
         let canShoot = true;
         let score = 0;
         let shotsFired = 0;
-        let mission1Interval = null;
-        let meterValue = 0;
-        let meterDirection = 1;
+        let clock = new THREE.Clock();
 
-        // Game Configuration
         const PLAYER_SPEED = 5;
         const SHOT_FORCE = 15;
         const PLAYER_MASS = 50;
 
-        // --- CORE INITIALIZATION ---
+
+        // --- UI & SCREEN MANAGEMENT ---
+
+        const SCREEN_IDS = ['main-menu', 'my-hub-screen', 'missions-screen', 'options-screen', 'mission-1-screen', 'mission-2-screen'];
+
+        window.showScreen = (screenId) => {
+            // Hide all sub-screens
+            SCREEN_IDS.forEach(id => {
+                const screen = document.getElementById(id);
+                if (screen) screen.classList.add('hidden');
+            });
+
+            // Show the requested screen
+            const targetScreen = document.getElementById(screenId);
+            if (targetScreen) targetScreen.classList.remove('hidden');
+
+            // Toggle HUD visibility and 3D loop based on whether a main menu is showing
+            const isMenuOpen = (screenId !== 'quick-play-game-screen');
+            document.getElementById('hud-overlay').classList.toggle('hidden', isMenuOpen);
+            
+            // Special case for Quick Play to re-engage the loop
+            if (screenId === 'quick-play-game-screen') {
+                document.getElementById('game-container').classList.remove('hidden');
+                document.getElementById('hud-overlay').classList.remove('hidden');
+                // The game loop (animate) continues running but physics steps only when playing
+            } else if (screenId === 'main-menu') {
+                // Ensure the canvas is not covered by any screen other than the main menu bar
+                document.getElementById('game-container').classList.remove('hidden');
+            }
+            
+            // If exiting a mission, update UI
+            if (screenId === 'missions-screen') updateMissionUI();
+            if (screenId === 'my-hub-screen') updateHubUI();
+        };
+
+        window.quickPlay = () => {
+            // Start the 3D loop if it's not running
+            if (!gameInitialized) init3DEnvironment(); 
+
+            // The 3D environment is now the main view
+            document.getElementById('main-menu').classList.add('hidden');
+            document.getElementById('game-container').classList.remove('hidden');
+            document.getElementById('hud-overlay').classList.remove('hidden');
+            
+            resetGame(false);
+        };
+
+        window.showModal = (title, message) => {
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-text').textContent = message;
+            document.getElementById('message-modal').classList.remove('hidden');
+            
+            // Stop the pulsing animation after a short delay
+            document.getElementById('message-box').style.animation = 'pulse 0.8s ease-in-out infinite alternate';
+        };
+
+        window.hideModal = () => {
+            document.getElementById('message-modal').classList.add('hidden');
+            document.getElementById('message-box').style.animation = 'none';
+        };
+
+
+        // --- FIREBASE & DATA LOGIC ---
 
         async function initFirebase() {
+            document.getElementById('loading-status').textContent = "Connecting to the Grid...";
+
             try {
-                // setLogLevel('Debug'); // Uncomment for debugging Firestore
+                if (!firebaseConfig.apiKey || firebaseConfig.apiKey === 'MOCK_API_KEY') {
+                    throw new Error("Missing or mock Firebase configuration. Playing offline.");
+                }
+
                 app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
 
-                // Set local persistence (optional, but good practice)
                 await setPersistence(auth, browserLocalPersistence);
 
-                // Check for custom token, otherwise sign in anonymously
                 if (initialAuthToken) {
                     await signInWithCustomToken(auth, initialAuthToken);
                 } else {
                     await signInAnonymously(auth);
                 }
 
-                // Auth state listener
-                onAuthStateChanged(auth, (user) => {
-                    if (user) {
-                        userId = user.uid;
-                        document.getElementById('user-info').textContent = `User: ${userId.substring(0, 8)}...`;
-                        isAuthReady = true;
-                        initFirestoreListener();
-                    } else {
-                        // This should ideally not happen after forced sign-in
-                        userId = crypto.randomUUID(); 
-                        document.getElementById('user-info').textContent = `Guest: ${userId.substring(0, 8)}...`;
-                        isAuthReady = true;
-                        // For guest, initialize local data and show stats
-                        updateMissionUI();
-                        document.getElementById('stats-overall-rating').textContent = playerData.overallRating;
-                    }
-                });
+                const user = auth.currentUser;
+                if (user) {
+                    userId = user.uid;
+                    document.getElementById('user-info').textContent = `Agent: ${userId.substring(0, 8)}...`;
+                    initFirestoreListener();
+                } else {
+                    throw new Error("Authentication failed to return a user.");
+                }
+
             } catch (error) {
-                console.error("Firebase Initialization Error:", error);
-                // Handle error gracefully for the user
-                showModal('Failed to connect to game services. Playing offline.');
-                isAuthReady = true; // Still allow game to start offline
+                console.error("Firebase Init Failed:", error);
+                document.getElementById('loading-status').textContent = "Connection Failed. Playing Offline.";
+                userId = 'GUEST-' + crypto.randomUUID().substring(0, 8);
+                document.getElementById('user-info').textContent = `GUEST: ${userId}`;
+                // Since offline, we just use the default playerData
+                updateHubUI();
                 updateMissionUI();
-                document.getElementById('stats-overall-rating').textContent = playerData.overallRating;
+                init3DEnvironment(); // Start the 3D environment regardless
                 hideLoading();
             }
         }
 
         function initFirestoreListener() {
-            if (!isAuthReady || !db || !userId) return;
+            if (!db || !userId) return;
 
             const userDocRef = doc(db, USER_DATA_PATH(userId));
 
-            // Set up real-time listener
             onSnapshot(userDocRef, (docSnap) => {
                 if (docSnap.exists()) {
                     const fetchedData = docSnap.data();
                     
-                    // Safely merge fetched data into local state
                     playerData.overallRating = fetchedData.overallRating || 75;
                     playerData.highScore = fetchedData.highScore || 0;
                     playerData.currentMission = fetchedData.currentMission || 1;
                     
                     // Safely parse missions data
-                    if (fetchedData.missions && typeof fetchedData.missions === 'string') {
-                         try {
-                            playerData.missions = JSON.parse(fetchedData.missions);
-                        } catch (e) {
-                            console.error("Error parsing missions JSON:", e);
-                        }
-                    } else if (fetchedData.missions && typeof fetchedData.missions === 'object') {
-                        playerData.missions = fetchedData.missions;
+                    try {
+                        playerData.missions = JSON.parse(fetchedData.missions) || playerData.missions;
+                    } catch (e) {
+                        playerData.missions = fetchedData.missions || playerData.missions;
                     }
-
                     console.log("Player data updated from Firestore:", playerData);
                 } else {
                     console.log("No profile found, creating new one.");
                     savePlayerData(); // Create initial document
                 }
 
-                // Update UI based on loaded data
                 updateScoreDisplays();
+                updateHubUI();
                 updateMissionUI();
-                document.getElementById('stats-overall-rating').textContent = playerData.overallRating;
-
-                // Game can now safely start
-                if (isLoading) {
+                
+                if (!gameInitialized) {
                     init3DEnvironment();
+                    hideLoading();
                 }
             }, (error) => {
                 console.error("Firestore Listener Error:", error);
-                showModal('Lost connection to game server. Data may not save.');
+                showModal('Lost Connection', 'Lost connection to game server. Data may not save.');
             });
         }
 
         async function savePlayerData() {
-            if (!isAuthReady || !db || !userId) {
-                console.warn("Cannot save data: Auth not ready or user ID missing.");
-                return;
-            }
-
+            if (!db || !userId) return;
             const userDocRef = doc(db, USER_DATA_PATH(userId));
             const dataToSave = {
                 overallRating: playerData.overallRating,
                 highScore: playerData.highScore,
                 currentMission: playerData.currentMission,
-                // Serialize missions object for safe storage in Firestore
                 missions: JSON.stringify(playerData.missions),
                 updatedAt: new Date().toISOString()
             };
-
             try {
                 await setDoc(userDocRef, dataToSave, { merge: true });
             } catch (error) {
                 console.error("Error saving player data:", error);
-                showModal('Could not save your progress.');
+                showModal('Save Error', 'Could not save your progress.');
             }
         }
-
+        
         function updateScoreDisplays() {
-            document.getElementById('high-score-display').textContent = `BEST: ${playerData.highScore}`;
-            document.getElementById('score-display').textContent = score;
+            document.getElementById('score-display').textContent = `SCORE: ${score}`;
             document.getElementById('shots-fired').textContent = `SHOTS: ${shotsFired}`;
+            document.getElementById('high-score-display').textContent = `BEST: ${playerData.highScore}`;
+        }
+        
+        function updateHubUI() {
+            document.getElementById('stats-overall-rating').textContent = playerData.overallRating;
             document.getElementById('stats-high-score').textContent = playerData.highScore;
+            
+            // Progress bar (simple linear based on current mission)
+            const progress = (playerData.currentMission - 1) * 50; 
+            document.getElementById('mission-progress-bar').style.width = `${Math.min(100, progress)}%`;
         }
 
         function updateMissionUI() {
-            const mission2Button = document.getElementById('mission-2-button');
-            const progress = (playerData.currentMission - 1) * 50; // Simple progress logic (50% per mission)
-            document.getElementById('mission-progress-bar').style.width = `${Math.min(100, progress)}%`;
+            const m2 = document.getElementById('mission-2-button');
+            if (!m2) return;
 
             if (playerData.currentMission > 1) {
-                mission2Button.textContent = '2. The Rookie Contract (READY)';
-                mission2Button.disabled = false;
+                m2.innerHTML = `<span>2. The Rookie Contract</span><span><i class="fas fa-lock-open"></i> READY</span>`;
+                m2.disabled = false;
             } else {
-                mission2Button.textContent = '2. The Rookie Contract (LOCKED)';
-                mission2Button.disabled = true;
+                m2.innerHTML = `<span>2. The Rookie Contract (LOCKED)</span><span><i class="fas fa-lock"></i></span>`;
+                m2.disabled = true;
             }
         }
+
+
+        // --- 3D & PHYSICS INITIALIZATION ---
 
         function init3DEnvironment() {
             // --- THREE.JS SETUP ---
             scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setClearColor(0x333333); // Dark background for neon effect
+            renderer.setClearColor(0x333333); 
             renderer.shadowMap.enabled = true;
+            renderer.domElement.id = 'game-canvas'; // Ensure the canvas has the ID we use in CSS
             document.getElementById('game-container').appendChild(renderer.domElement);
 
             // --- CANNON.JS SETUP ---
@@ -498,24 +703,41 @@
             world.gravity.set(0, -9.82, 0);
             world.broadphase = new CANNON.NaiveBroadphase();
             world.solver.iterations = 10;
-
-            // --- LIGHTING ---
-            const ambient = new THREE.AmbientLight(0x404040, 10);
-            scene.add(ambient);
             
+            // --- SCENE ELEMENTS ---
+            createLights();
+            createGround();
+            createHoopStructure(0, 3.0, -10);
+            createPlayer(0, 0.5, 5);
+            createBall();
+
+            // --- CAMERA ---
+            camera.position.set(0, 3, 10); 
+            
+            // --- EVENT LISTENERS ---
+            window.addEventListener('resize', onWindowResize, false);
+            document.addEventListener('keydown', onKeyDown, false);
+            document.addEventListener('keyup', onKeyUp, false);
+            
+            gameInitialized = true;
+            animate();
+            
+            // Show the main menu first
+            showScreen('main-menu');
+        }
+
+        function createLights() {
+            scene.add(new THREE.AmbientLight(0x404040, 10));
             const spotLight = new THREE.SpotLight(0xffffff, 200, 100, Math.PI * 0.25, 0.5, 2);
             spotLight.position.set(0, 20, 0);
             spotLight.castShadow = true;
-            spotLight.shadow.mapSize.width = 1024;
-            spotLight.shadow.mapSize.height = 1024;
-            spotLight.shadow.camera.near = 0.5;
-            spotLight.shadow.camera.far = 50;
             scene.add(spotLight);
+        }
 
-            // --- GROUND (CANNON & THREE) ---
+        function createGround() {
             const groundShape = new CANNON.Plane();
             const groundBody = new CANNON.Body({ mass: 0, shape: groundShape });
-            groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2); // Rotate to horizontal
+            groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
             world.addBody(groundBody);
 
             const groundMesh = new THREE.Mesh(
@@ -525,97 +747,40 @@
             groundMesh.rotation.x = -Math.PI / 2;
             groundMesh.receiveShadow = true;
             scene.add(groundMesh);
-
-            // --- BACKBOARD & HOOP ---
-            createBackboard(0, 3.0, -10);
-            createHoop(0, 3.0, -10);
-
-            // --- PLAYER CHARACTER (for reference/camera control) ---
-            const playerShape = new CANNON.Sphere(0.5);
-            playerBody = new CANNON.Body({ mass: PLAYER_MASS, shape: playerShape, position: new CANNON.Vec3(0, 0.5, 0) });
-            world.addBody(playerBody);
-            playerBody.linearDamping = 0.9;
-            playerBody.angularDamping = 0.9;
-
-            const playerMesh = new THREE.Mesh(
-                new THREE.SphereGeometry(0.5, 16, 16),
-                new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true, transparent: true, opacity: 0.3 })
-            );
-            scene.add(playerMesh);
-            player = playerMesh;
-            
-            // --- BASKETBALL ---
-            createBall();
-
-            // --- CAMERA SETUP ---
-            // Camera position relative to player (third-person view)
-            camera.position.set(0, 3, 5); 
-            
-            // --- EVENT LISTENERS ---
-            window.addEventListener('resize', onWindowResize, false);
-            document.addEventListener('keydown', onKeyDown, false);
-            document.addEventListener('keyup', onKeyUp, false);
-            
-            hideLoading();
-            animate();
-        }
-        
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        // --- 3D UTILITIES ---
-
-        function createBackboard(x, y, z) {
-            // Backboard (Mesh)
+        function createHoopStructure(x, y, z) {
+            // Backboard (Mesh & Physics)
             const backboardGeo = new THREE.BoxGeometry(2, 1.5, 0.1);
             const backboardMat = new THREE.MeshStandardMaterial({ color: 0xff00ff, metalness: 0.8, roughness: 0.2 });
             const backboardMesh = new THREE.Mesh(backboardGeo, backboardMat);
             backboardMesh.position.set(x, y, z);
-            backboardMesh.receiveShadow = true;
             backboardMesh.castShadow = true;
             scene.add(backboardMesh);
 
-            // Backboard (Physics - Mass 0, static)
             const backboardShape = new CANNON.Box(new CANNON.Vec3(1, 0.75, 0.05));
             const backboardBody = new CANNON.Body({ mass: 0, shape: backboardShape, position: new CANNON.Vec3(x, y, z) });
             world.addBody(backboardBody);
 
-            // Backboard Pole
-            const poleGeo = new THREE.CylinderGeometry(0.1, 0.1, 8, 8);
-            const poleMat = new THREE.MeshStandardMaterial({ color: 0x555555 });
-            const poleMesh = new THREE.Mesh(poleGeo, poleMat);
-            poleMesh.position.set(x, y - 4.0, z);
-            poleMesh.receiveShadow = true;
-            poleMesh.castShadow = true;
-            scene.add(poleMesh);
-        }
-
-        function createHoop(x, y, z) {
-            // Rim (Mesh)
+            // Rim (Mesh & Physics)
             const rimGeo = new THREE.TorusGeometry(0.4, 0.05, 8, 32);
-            const rimMat = new THREE.MeshStandardMaterial({ color: 0xff4500 }); // Orange rim
+            const rimMat = new THREE.MeshStandardMaterial({ color: 0xff4500 });
             const rimMesh = new THREE.Mesh(rimGeo, rimMat);
             rimMesh.rotation.x = Math.PI / 2;
             rimMesh.position.set(x, y - 0.5, z + 0.5);
-            rimMesh.castShadow = true;
             scene.add(rimMesh);
 
-            // Rim (Physics - Static Cylinder for collision)
             const rimShape = new CANNON.Cylinder(0.4, 0.4, 0.1, 16);
             const rimBody = new CANNON.Body({ mass: 0, shape: rimShape, position: new CANNON.Vec3(x, y - 0.5, z + 0.5) });
             rimBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
             world.addBody(rimBody);
             
-            // Score sensor (Invisible Plane beneath the rim)
+            // Score sensor
             const sensorShape = new CANNON.Box(new CANNON.Vec3(0.5, 0.01, 0.5));
             const sensorBody = new CANNON.Body({ mass: 0, shape: sensorShape, position: new CANNON.Vec3(x, y - 0.6, z + 0.5) });
-            sensorBody.collisionResponse = false; // Doesn't affect ball physics
+            sensorBody.collisionResponse = false; 
             world.addBody(sensorBody);
 
-            // Set up collision event listener for scoring
             sensorBody.addEventListener('collide', (event) => {
                 if (event.body === basketballBody) {
                     handleScore();
@@ -623,8 +788,22 @@
             });
         }
 
+        function createPlayer(x, y, z) {
+            const playerShape = new CANNON.Sphere(0.5);
+            playerBody = new CANNON.Body({ mass: PLAYER_MASS, shape: playerShape, position: new CANNON.Vec3(x, y, z) });
+            playerBody.linearDamping = 0.9;
+            playerBody.angularDamping = 0.9;
+            world.addBody(playerBody);
+
+            const playerMesh = new THREE.Mesh(
+                new THREE.SphereGeometry(0.5, 16, 16),
+                new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true, transparent: true, opacity: 0.3 })
+            );
+            scene.add(playerMesh);
+            playerBody.userData = { mesh: playerMesh }; // Link mesh to body
+        }
+
         function createBall() {
-            // Basketball (Mesh)
             const ballRadius = 0.25;
             const ballGeo = new THREE.SphereGeometry(ballRadius, 32, 32);
             const ballMat = new THREE.MeshStandardMaterial({ color: 0xff8c00, roughness: 0.6, metalness: 0.1 });
@@ -632,84 +811,48 @@
             basketballMesh.castShadow = true;
             scene.add(basketballMesh);
 
-            // Basketball (Physics)
             const ballShape = new CANNON.Sphere(ballRadius);
             basketballBody = new CANNON.Body({ 
                 mass: 1, 
                 shape: ballShape, 
-                position: new CANNON.Vec3(0, 1, 5), // Initial position away from hoop
+                position: new CANNON.Vec3(0, 1, 5),
                 material: new CANNON.Material("ballMaterial")
             });
-            world.addBody(basketballBody);
-            
-            // Add some damping to prevent endless bouncing
             basketballBody.linearDamping = 0.1;
             basketballBody.angularDamping = 0.5;
+            world.addBody(basketballBody);
         }
         
-        function handleScore() {
-            // Only score if the ball is currently moving through the hoop downwards
-            const isMovingDown = basketballBody.velocity.y < -0.5;
+        // --- GAME LOGIC ---
 
-            // This is a simple scoring mechanism. In a real game, you would use a more sophisticated method
-            // (e.g., raycasting to detect movement direction and a flag to prevent multiple scores per shot)
-            if (isMovingDown) {
-                // Ensure the ball is not already marked as scored for this shot
+        function handleScore() {
+            if (basketballBody.velocity.y < -0.5) {
                 if (!basketballBody.userData || !basketballBody.userData.scored) {
                     score += 2;
-                    basketballBody.userData = { scored: true }; // Mark the shot as scored
+                    basketballBody.userData = { scored: true }; 
                     updateScoreDisplays();
-                    showModal('SWISH! +2 Points!', 'neon-text-blue');
+                    showModal('SWISH!', '+2 Points Added to Score!');
+                    
+                    if (score > playerData.highScore) {
+                        playerData.highScore = score;
+                        savePlayerData();
+                    }
                 }
             }
         }
         
-        // --- INPUT HANDLING ---
-
-        function onKeyDown(event) {
-            if (document.getElementById('quick-play-game-screen').classList.contains('hidden')) return;
-            
-            switch (event.code) {
-                case 'KeyW': inputState.forward = true; break;
-                case 'KeyS': inputState.backward = true; break;
-                case 'KeyA': inputState.left = true; break;
-                case 'KeyD': inputState.right = true; break;
-                case 'Space': 
-                    if (canShoot) {
-                        inputState.shoot = true;
-                        shootBall();
-                    }
-                    break;
-            }
-        }
-
-        function onKeyUp(event) {
-             if (document.getElementById('quick-play-game-screen').classList.contains('hidden')) return;
-
-            switch (event.code) {
-                case 'KeyW': inputState.forward = false; break;
-                case 'KeyS': inputState.backward = false; break;
-                case 'KeyA': inputState.left = false; break;
-                case 'KeyD': inputState.right = false; break;
-                case 'Space': inputState.shoot = false; break;
-            }
-        }
-
         function shootBall() {
-            if (!canShoot) return;
+            if (!canShoot || !playerBody || !basketballBody) return;
             canShoot = false;
             
             shotsFired++;
             updateScoreDisplays();
 
-            // Reset the 'scored' flag for the new shot
             basketballBody.userData = { scored: false }; 
 
-            // Calculate shot direction (from player to hoop)
             const playerPos = playerBody.position;
-            const hoopPos = new CANNON.Vec3(0, 3.0, -10); // Hoop center
+            const hoopPos = new CANNON.Vec3(0, 3.0, -10); 
             
-            // Direction vector
             let direction = new CANNON.Vec3();
             hoopPos.vsub(playerPos, direction);
             direction.normalize();
@@ -718,318 +861,124 @@
             const shotDirection = new CANNON.Vec3(direction.x, direction.y + 0.5, direction.z);
             shotDirection.normalize();
 
-            // Reset ball position to player's hands (a point in front of the player)
+            // Ball initial position
             const ballInitialPos = new CANNON.Vec3(
                 playerPos.x + shotDirection.x * 0.5,
                 playerPos.y + 1.5,
                 playerPos.z + shotDirection.z * 0.5
             );
 
-            // Stop the ball and reset its state before shooting
+            // Reset ball state and position
             basketballBody.velocity.set(0, 0, 0);
             basketballBody.angularVelocity.set(0, 0, 0);
             basketballBody.position.copy(ballInitialPos);
             
-            // Apply impulse (force)
+            // Apply impulse (force) scaled by player rating
             basketballBody.applyImpulse(
-                shotDirection.scale(SHOT_FORCE + (playerData.overallRating / 20)), // Scale force by player rating
+                shotDirection.scale(SHOT_FORCE + (playerData.overallRating / 20)),
                 basketballBody.position
             );
             
-            // Re-enable shooting after a short cooldown
-            setTimeout(() => {
-                canShoot = true;
-            }, 1500); // 1.5 second cooldown
-        }
-
-        // --- GAME LOOP ---
-
-        let lastTime = performance.now();
-        const timeStep = 1 / 60;
-
-        function animate(time) {
-            requestAnimationFrame(animate);
-
-            // Only run physics and game logic if the Quick Play screen is active
-            if (document.getElementById('quick-play-game-screen').classList.contains('hidden')) {
-                renderer.render(scene, camera);
-                return;
-            }
-
-            const deltaTime = (time - lastTime) / 1000;
-            lastTime = time;
-
-            // Step the physics world
-            world.step(timeStep, deltaTime, 3);
-            
-            // --- MOVEMENT LOGIC (CANNON) ---
-            
-            // Player movement direction
-            let moveVector = new THREE.Vector3(0, 0, 0);
-            if (inputState.forward) moveVector.z -= 1;
-            if (inputState.backward) moveVector.z += 1;
-            if (inputState.left) moveVector.x -= 1;
-            if (inputState.right) moveVector.x += 1;
-            moveVector.normalize();
-            
-            // Apply movement force
-            const currentVelocity = playerBody.velocity;
-            
-            // Calculate desired velocity
-            const desiredVelocity = new CANNON.Vec3(
-                moveVector.x * PLAYER_SPEED,
-                currentVelocity.y, // Maintain gravity effect
-                moveVector.z * PLAYER_SPEED
-            );
-            
-            // Calculate force required to achieve desired velocity (simple approximation)
-            let force = new CANNON.Vec3();
-            desiredVelocity.vsub(currentVelocity, force);
-            force.scale(playerBody.mass * 10, force); // Apply scaling force
-
-            // Clear horizontal velocity before applying new force to prevent "sliding"
-            playerBody.velocity.x *= 0.8;
-            playerBody.velocity.z *= 0.8;
-
-            playerBody.applyForce(force, playerBody.position);
-
-            // --- RENDER UPDATES (THREE) ---
-
-            // 1. Update Player Mesh position (if visualized)
-            player.position.copy(playerBody.position);
-            player.quaternion.copy(playerBody.quaternion);
-
-            // 2. Update Basketball Mesh position
-            basketballMesh.position.copy(basketballBody.position);
-            basketballMesh.quaternion.copy(basketballBody.quaternion);
-            
-            // 3. Update Camera position (follow the player)
-            camera.position.x = player.position.x;
-            camera.position.z = player.position.z + 5;
-            camera.position.y = player.position.y + 3;
-            
-            // Camera looks slightly forward, towards the hoop
-            camera.lookAt(0, 2.5, -10); 
-
-            // Check if ball is out of bounds (too far away)
-            if (basketballBody.position.length() > 50) {
-                resetBallPosition();
-            }
-
-            renderer.render(scene, camera);
+            // Cooldown
+            setTimeout(() => { canShoot = true; }, 1500);
         }
 
         function resetBallPosition() {
-            // Reset ball to player's position
+            if (!basketballBody || !playerBody) return;
             basketballBody.velocity.set(0, 0, 0);
             basketballBody.angularVelocity.set(0, 0, 0);
             basketballBody.position.set(playerBody.position.x, playerBody.position.y + 1, playerBody.position.z);
             basketballBody.userData = { scored: false };
-            canShoot = true; // Allow shooting immediately after reset
+            canShoot = true;
         }
 
-        // --- UI & GAME FLOW FUNCTIONS ---
-
-        function showScreen(id) {
-            const screens = ['main-menu-container', 'quick-play-game-screen', 'my-hub-screen', 'my-stats-screen', 'missions-screen', 'options-screen', 'quit-screen', 'mission-1-screen', 'mission-2-screen'];
-            screens.forEach(screenId => {
-                const element = document.getElementById(screenId);
-                if (element) {
-                    // Quick Play is the only screen that needs to be an 'overlay' 
-                    // and allow clicks to pass through if not interactive.
-                    if (screenId === 'quick-play-game-screen') {
-                        element.classList.toggle('hidden', screenId !== id);
-                        // Stop the meter animation if a menu other than the quick play screen is showing
-                        if (screenId !== id) stopMeter(true);
-                        
-                    } else {
-                        // All other screens are modal menus
-                        element.classList.toggle('hidden', screenId !== id);
-                    }
-                }
-            });
-            
-            // Ensure 3D rendering is paused or resumed
-            const isGameActive = id === 'quick-play-game-screen';
-            // Game logic is paused inside the animate loop, so no extra pause function needed.
-        }
-
-        function showMainMenu() {
-            showScreen('main-menu-container');
-        }
-
-        function quickPlay() {
-            showScreen('quick-play-game-screen');
-            // Reset game state for a new quick play session
-            resetGame(false); 
-        }
-
-        function resetGame(shouldShowModal) {
-            score = 0;
-            shotsFired = 0;
-            updateScoreDisplays();
-            resetBallPosition();
-            
-            if (playerBody) {
-                // Reset player position closer to the action
-                playerBody.position.set(0, 0.5, 5); 
-                playerBody.velocity.set(0, 0, 0);
-                playerBody.angularVelocity.set(0, 0, 0);
-            }
-
-            // Check and update High Score upon ending the previous game
-            if (score > playerData.highScore) {
+        function resetGame(shouldSave) {
+            if (shouldSave && score > playerData.highScore) {
                 playerData.highScore = score;
                 savePlayerData();
             }
 
-            if (shouldShowModal) showModal('Quick Play Reset!', 'neon-text-blue');
+            score = 0;
+            shotsFired = 0;
+            updateScoreDisplays();
+            
+            if (playerBody) {
+                playerBody.position.set(0, 0.5, 5); 
+                playerBody.velocity.set(0, 0, 0);
+                playerBody.angularVelocity.set(0, 0, 0);
+            }
+            resetBallPosition();
         }
 
-        function loadMyHub() {
-            showScreen('my-hub-screen');
-            document.getElementById('player-id-display').textContent = userId;
-        }
+        // --- GAME LOOP ---
 
-        function loadMyStats() {
-            showScreen('my-stats-screen');
-            // Data is updated via the Firestore listener
-        }
-        
-        function loadMissions() {
-            showScreen('missions-screen');
-            updateMissionUI();
-        }
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
 
-        function loadOptions() {
-            showScreen('options-screen');
-        }
+            // Only run physics if not in a menu (i.e., quick-play is active)
+            const isPlaying = !document.getElementById('hud-overlay').classList.contains('hidden');
 
-        function quitGame() {
-            showScreen('quit-screen');
-        }
-        
-        // --- MISSION 1 LOGIC (Meter Challenge) ---
-        
-        function startMission(missionId) {
-            if (missionId === 1) {
-                showScreen('mission-1-screen');
-                document.getElementById('meter-feedback').textContent = '';
-                meterValue = 0;
-                meterDirection = 1;
-                document.getElementById('meter-pointer').style.left = '0%';
+            if (isPlaying) {
+                // --- PHYSICS STEP ---
+                world.step(1/60, delta, 3);
                 
-                // Start or restart the meter animation
-                if (mission1Interval) clearInterval(mission1Interval);
-                mission1Interval = setInterval(updateMeter, 10); // 10ms update rate
-            } else if (missionId === 2) {
-                if (playerData.currentMission > 1) {
-                    showScreen('mission-2-screen');
-                } else {
-                    showModal('Mission 2 is locked! Complete Mission 1 first.', 'neon-text-pink');
+                // --- PLAYER MOVEMENT (Input) ---
+                if (playerBody) {
+                    let moveVector = new THREE.Vector3(0, 0, 0);
+                    if (inputState.forward) moveVector.z -= 1;
+                    if (inputState.backward) moveVector.z += 1;
+                    if (inputState.left) moveVector.x -= 1;
+                    if (inputState.right) moveVector.x += 1;
+                    moveVector.normalize();
+                    
+                    let desiredVelocity = new CANNON.Vec3(
+                        moveVector.x * PLAYER_SPEED,
+                        playerBody.velocity.y,
+                        moveVector.z * PLAYER_SPEED
+                    );
+                    
+                    let currentVel = playerBody.velocity;
+                    let force = new CANNON.Vec3();
+                    desiredVelocity.vsub(currentVel, force);
+                    force.scale(playerBody.mass * 10, force);
+
+                    playerBody.velocity.x *= 0.8;
+                    playerBody.velocity.z *= 0.8;
+                    playerBody.applyForce(force, playerBody.position);
+                    
+                    // Update Player Mesh
+                    playerBody.userData.mesh.position.copy(playerBody.position);
+                    playerBody.userData.mesh.quaternion.copy(playerBody.quaternion);
+                }
+                
+                // Update Basketball Mesh
+                if (basketballMesh && basketballBody) {
+                    basketballMesh.position.copy(basketballBody.position);
+                    basketballMesh.quaternion.copy(basketballBody.quaternion);
+                    
+                    // Check if ball is too far
+                    if (basketballBody.position.length() > 50) {
+                        resetBallPosition();
+                    }
+                }
+                
+                // Update Camera
+                if (camera && playerBody) {
+                    camera.position.x = playerBody.position.x;
+                    camera.position.z = playerBody.position.z + 5;
+                    camera.position.y = playerBody.position.y + 3;
+                    camera.lookAt(0, 2.5, -10); 
                 }
             }
-        }
 
-        function updateMeter() {
-            meterValue += meterDirection * 1; // Speed of meter
-            
-            if (meterValue >= 100) {
-                meterDirection = -1;
-                meterValue = 100;
-            } else if (meterValue <= 0) {
-                meterDirection = 1;
-                meterValue = 0;
-            }
-
-            document.getElementById('meter-display').textContent = Math.round(meterValue);
-            document.getElementById('meter-pointer').style.left = `${meterValue}%`;
-        }
-
-        function stopMeter() {
-            if (!mission1Interval) return;
-            clearInterval(mission1Interval);
-            mission1Interval = null;
-            
-            const feedbackEl = document.getElementById('mission-feedback');
-            
-            // Sweet spot: 80% to 90% (inclusive)
-            if (meterValue >= 80 && meterValue <= 90) {
-                feedbackEl.textContent = 'PERFECT SHOT! Mission Complete!';
-                feedbackEl.className = 'text-xl font-bold mt-4 neon-text-blue';
-                completeMission(1);
-            } else if (meterValue > 70 && meterValue < 95) {
-                 feedbackEl.textContent = 'Good Shot. Close, but no cigar. Try again.';
-                 feedbackEl.className = 'text-xl font-bold mt-4 text-yellow-500';
-            } else {
-                feedbackEl.textContent = 'Off Target. Practice makes perfect.';
-                feedbackEl.className = 'text-xl font-bold mt-4 neon-text-pink';
+            // Always render, even if physics is paused (for menu screens)
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
             }
         }
         
-        function completeMission(missionId) {
-            if (playerData.missions[missionId] && !playerData.missions[missionId].completed) {
-                playerData.missions[missionId].completed = true;
-                playerData.overallRating += playerData.missions[missionId].ratingBonus;
-                playerData.currentMission = missionId + 1; // Unlock next mission
-                savePlayerData();
-                showModal(`Mission ${missionId} Completed! Overall Rating increased to ${playerData.overallRating}!`, 'neon-text-blue');
-            }
-        }
-
-        function completeMission2(option) {
-            const bonus = option === 1 ? 5 : 1;
-            playerData.missions[2].ratingBonus = bonus;
-            
-            // This is just a simulated choice; completion is handled the same way
-            completeMission(2);
-            showMainMenu();
-        }
-
-        // --- UTILITIES ---
-
-        function hideLoading() {
-            isLoading = false;
-            const loadingOverlay = document.getElementById('loading-overlay');
-            if (loadingOverlay) {
-                loadingOverlay.style.opacity = '0';
-                setTimeout(() => loadingOverlay.classList.add('hidden'), 300);
-            }
-        }
-
-        function showModal(message, styleClass = 'neon-text-pink') {
-            const modalEl = document.getElementById('message-modal');
-            const boxEl = document.getElementById('message-box');
-            const textEl = document.getElementById('modal-text');
-
-            textEl.textContent = message;
-            textEl.className = `text-xl font-bold ${styleClass}`;
-            boxEl.style.animation = 'pulse 1s infinite alternate';
-            
-            modalEl.classList.remove('hidden');
-            modalEl.onclick = () => {
-                modalEl.classList.add('hidden');
-                boxEl.style.animation = 'none';
-                modalEl.onclick = null;
-            };
-
-            // Auto-hide after 3 seconds if not clicked
-            setTimeout(() => {
-                if (!modalEl.classList.contains('hidden')) {
-                    modalEl.classList.add('hidden');
-                    boxEl.style.animation = 'none';
-                    modalEl.onclick = null;
-                }
-            }, 3000);
-        }
-
-        // --- START APP ---
-        window.onload = function () {
-            // First, initialize Firebase and authentication
-            initFirebase();
-            // init3DEnvironment will be called after Firestore data is loaded
-        }
-    </script>
-    <!-- === END OF SCRIPT.JS CONTENT === -->
-</body>
-</html>
+        // --- EVENT HANDLERS ---
+        function onWindowResize() {
+            if (camera && renderer) {
+                camera.aspect = window.innerWidth
