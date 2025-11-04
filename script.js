@@ -1,337 +1,539 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, setDoc, onSnapshot, updateDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+// ==========================================================
+// 1. GLOBAL GAME & FIREBASE VARIABLES
+// ==========================================================
 
-// --- GLOBAL VARIABLES ---
-// Mandatory globals provided by the execution environment
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
-// Firebase instances
-let app;
 let db;
 let auth;
-let userId = null; // Will store the authenticated user's ID
+let userId = null;
+let playerState = null;
+let isAuthReady = false; // Flag to ensure we don't proceed without a user ID
 
-// Application state (initial default values)
-let playerData = {
-    name: "Rogue Analyst",
-    rank: "Rookie",
-    influence: 0,
-    credits: 500
+// Mission 1 Meter Variables
+let meterValue = 0;
+let meterDirection = 1; // 1 for increasing, -1 for decreasing
+let meterSpeed = 0.5; // Controls the speed of the meter's movement
+let animationFrameId = null;
+
+// The default state for a new player
+const defaultPlayerState = {
+    overallRating: 75,
+    missionProgress: 0, // 0 = start, 100 = finished
+    currentMission: 1,
+    missionsCompleted: {
+        1: false,
+        2: false,
+        3: false, // Placeholder for future missions
+    }
 };
 
-// Quick Play Game State
-let gameInterval = null;
-let gameTime = 0; // Timer for the reflex game
+// ==========================================================
+// 2. FIREBASE INITIALIZATION AND AUTHENTICATION
+// ==========================================================
 
-// --- FIREBASE INITIALIZATION & AUTHENTICATION ---
+window.onload = function() {
+    // Only proceed if the necessary global variables are available from index.html
+    if (window.globalFirebaseConfig && window.globalAppId) {
+        setupFirebaseAndAuth();
+    } else {
+        console.error("Firebase config or App ID is missing. Cannot initialize Firebase.");
+    }
+};
 
 /**
- * Initializes Firebase services and authenticates the user.
+ * Initializes Firebase, authenticates the user, and starts data subscription.
  */
-async function initializeFirebase() {
+async function setupFirebaseAndAuth() {
     try {
         setLogLevel('debug'); // Enable detailed logging for debugging
-        app = initializeApp(firebaseConfig);
+
+        // Initialize App and Services
+        const app = initializeApp(globalFirebaseConfig);
         db = getFirestore(app);
         auth = getAuth(app);
-
-        // Sign in using custom token or anonymously if no token is provided
-        if (initialAuthToken) {
-            await signInWithCustomToken(auth, initialAuthToken);
-            console.log("Firebase: Signed in with custom token.");
+        
+        // Handle Authentication
+        if (globalInitialAuthToken) {
+            await signInWithCustomToken(auth, globalInitialAuthToken);
         } else {
+            // Fallback for anonymous sign-in if no token is provided
             await signInAnonymously(auth);
-            console.log("Firebase: Signed in anonymously.");
         }
 
-        // Set up the listener for auth state changes
+        // Listen for Auth State changes
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 userId = user.uid;
-                console.log("Auth State Changed: User ID set to:", userId);
-                document.getElementById('user-id').textContent = userId;
-                document.getElementById('hub-user-id').textContent = userId;
-
-                // Once authenticated, start listening for player data
-                setupPlayerDataListener();
+                console.log(`Authenticated. User ID: ${userId}`);
+                document.getElementById('player-id-display').textContent = userId;
+                isAuthReady = true;
+                subscribeToGameData();
             } else {
+                // If sign-out happens (shouldn't typically happen in this environment)
                 userId = null;
-                document.getElementById('user-id').textContent = 'Signed Out';
-                console.log("Auth State Changed: User signed out.");
+                isAuthReady = false;
+                console.warn("User signed out or authentication failed.");
             }
         });
 
     } catch (error) {
-        console.error("Firebase Initialization Error:", error);
-        showMessage("System Error", "Failed to connect to the database. Check console for details.");
+        console.error("Error setting up Firebase and Authentication:", error);
     }
 }
 
-// --- FIRESTORE DATA HANDLING ---
-
 /**
- * Gets the document reference for the current player's profile.
- * @returns {object|null} A Firestore Document Reference or null if userId is missing.
+ * Gets the document reference for the current player's save data.
+ * @returns {object|null} A Firestore document reference or null if user is not ready.
  */
-function getPlayerDocRef() {
-    if (!userId) {
-        console.error("Cannot get doc ref: User ID is not set.");
+function getDocRef() {
+    if (!db || !userId) {
+        console.error("Firestore or User ID is not ready.");
         return null;
     }
-    // Path: /artifacts/{appId}/users/{userId}/player_data/profile
-    const docPath = `/artifacts/${appId}/users/${userId}/player_data`;
-    return doc(db, docPath, 'profile');
+    // Path: /artifacts/{appId}/users/{userId}/gameData/playerSave
+    return doc(db, 'artifacts', globalAppId, 'users', userId, 'gameData', 'playerSave');
 }
 
-/**
- * Sets up a real-time listener for the player's profile data.
- */
-function setupPlayerDataListener() {
-    const playerRef = getPlayerDocRef();
-    if (!playerRef) return;
 
-    onSnapshot(playerRef, (docSnap) => {
-        if (docSnap.exists()) {
-            // Document exists, load the data
-            playerData = docSnap.data();
-            console.log("Player data loaded:", playerData);
+// ==========================================================
+// 3. GAME DATA SUBSCRIPTION (REAL-TIME LOADING)
+// ==========================================================
+
+/**
+ * Subscribes to the player's game data in real-time.
+ * This is the primary way the game loads and updates its state.
+ */
+function subscribeToGameData() {
+    const docRef = getDocRef();
+    if (!docRef) return;
+
+    // Set up the real-time listener
+    onSnapshot(docRef, (docSnapshot) => {
+        if (docSnapshot.exists()) {
+            // Player has existing data
+            playerState = docSnapshot.data();
+            console.log("Game state updated from Firestore:", playerState);
         } else {
-            // Document does not exist, initialize a new one
-            console.log("No profile found, initializing new player data.");
-            // We use the default playerData defined at the top
-            savePlayerData(playerData, true); // Create a new profile
+            // Player is new (no document exists)
+            console.log("No existing game data found. Creating new save.");
+            playerState = defaultPlayerState;
+            // Immediately save the default state to Firestore
+            saveGame(false); 
         }
-        updateUI(); // Always update UI after data change
+        updateUI();
     }, (error) => {
-        console.error("Error listening to player data:", error);
-        showMessage("Connection Error", "Failed to retrieve real-time data.");
+        console.error("Error subscribing to game data:", error);
+        showCustomModal("Connection Error", "Could not connect to the cloud database. Check your internet connection.", [{text: "OK", action: hideCustomModal}]);
     });
 }
 
+// ==========================================================
+// 4. FIREBASE SAVE, LOAD, AND RESET
+// ==========================================================
+
 /**
- * Saves the current player data to Firestore.
- * @param {object} data The player data object to save.
- * @param {boolean} initialize If true, uses setDoc to initialize; otherwise, uses updateDoc.
+ * Saves the current game state to Firestore.
+ * @param {boolean} showSuccess Whether to display a success modal. Defaults to true.
  */
-async function savePlayerData(data, initialize = false) {
-    const playerRef = getPlayerDocRef();
-    if (!playerRef) return;
+async function saveGame(showSuccess = true) {
+    const docRef = getDocRef();
+    if (!docRef || !playerState) return;
 
     try {
-        if (initialize) {
-            // setDoc will create or overwrite the document
-            await setDoc(playerRef, data);
-            console.log("New player profile created/overwritten.");
-        } else {
-            // updateDoc updates specific fields non-destructively
-            await updateDoc(playerRef, data);
-            console.log("Player data updated.");
+        // Use setDoc to create the document if it doesn't exist, or overwrite if it does
+        await setDoc(docRef, playerState);
+        if (showSuccess) {
+            showCustomModal("Game Saved!", "Your progress has been saved to the cloud.", [{text: "Awesome!", action: hideCustomModal}]);
         }
     } catch (error) {
-        console.error("Error saving player data:", error);
-        showMessage("Save Error", "Could not save progress to the server.");
+        console.error("Error saving game:", error);
+        showCustomModal("Save Failed", "Could not save your progress. Please try again.", [{text: "OK", action: hideCustomModal}]);
     }
 }
 
-// --- UI MANIPULATION ---
+/**
+ * Forces a reload of the current game state (mostly redundant with onSnapshot, but useful for manual load button).
+ */
+async function loadGame() {
+    // onSnapshot is already handling the real-time loading, but we confirm success here.
+    if (playerState) {
+        updateUI(); // Ensure UI is up-to-date
+        showCustomModal("Game Loaded!", "Your latest progress was successfully synchronized from the cloud.", [{text: "Got It", action: hideCustomModal}]);
+    } else {
+        showCustomModal("Load Error", "No cloud save found or data is still loading.", [{text: "OK", action: hideCustomModal}]);
+    }
+}
 
 /**
- * Updates all UI elements based on the current playerData state.
+ * Prompts the user before resetting the game.
+ */
+function confirmResetGame() {
+    showCustomModal(
+        "Reset Progress?",
+        "Are you sure you want to permanently delete ALL of your player progress and start over?",
+        [
+            {text: "YES, Delete All", action: resetGame},
+            {text: "NO, Go Back", action: hideCustomModal}
+        ]
+    );
+}
+
+/**
+ * Deletes the player's save document and re-initializes the state.
+ */
+async function resetGame() {
+    hideCustomModal();
+    const docRef = getDocRef();
+    if (!docRef) return;
+
+    try {
+        await deleteDoc(docRef);
+        console.log("Game data deleted from cloud.");
+        
+        // Reset local state, which will trigger onSnapshot to create a new save
+        playerState = defaultPlayerState; 
+        updateUI();
+        showCustomModal("Reset Complete", "All progress has been wiped. Welcome to a fresh start!", [{text: "Let's Go!", action: hideCustomModal}]);
+
+    } catch (error) {
+        console.error("Error deleting game data:", error);
+        showCustomModal("Reset Failed", "Could not reset progress.", [{text: "OK", action: hideCustomModal}]);
+    }
+}
+
+
+// ==========================================================
+// 5. UI MANAGEMENT & UPDATES
+// ==========================================================
+
+/**
+ * Hides all main screen containers.
+ */
+function hideAllScreens() {
+    const screens = document.querySelectorAll('.missions-log-container, .my-player-container, .options-container, .quit-container, .mission-screen');
+    screens.forEach(screen => {
+        screen.style.display = 'none';
+    });
+}
+
+/**
+ * Main function to update all dynamic UI elements based on playerState.
  */
 function updateUI() {
-    document.getElementById('player-name').textContent = playerData.name;
-    document.getElementById('player-rank').textContent = playerData.rank;
-    document.getElementById('player-influence').textContent = playerData.influence;
-    document.getElementById('player-credits').textContent = playerData.credits;
+    if (!playerState) return;
 
-    // Update progress bar
-    const influenceBar = document.getElementById('influence-bar');
-    const maxInfluence = 1000; // Define a rank-up threshold
-    const percentage = Math.min(100, (playerData.influence / maxInfluence) * 100);
-    influenceBar.style.width = `${percentage}%`;
+    updateStatsDisplay();
+    updateMissionButtons();
 }
 
 /**
- * Toggles the visibility of screen containers based on the ID.
- * Exposes the function globally via window.
- * @param {string} screenId The ID of the screen container to show.
+ * Updates the stats screen elements.
  */
-window.showScreen = function (screenId) {
-    // Hide all main screen containers
-    const screens = document.querySelectorAll('.main-menu-container, .my-player-container, .missions-log-container, .quick-play-screen');
-    screens.forEach(screen => screen.classList.remove('active-screen'));
+function updateStatsDisplay() {
+    document.querySelector('#my-stats-screen p:nth-child(2) strong').textContent = `Overall Rating: ${playerState.overallRating}`;
+    
+    // Mission Progress Bar
+    const progressBar = document.getElementById('mission-progress-bar');
+    progressBar.style.width = `${playerState.missionProgress}%`;
 
-    // Show the requested screen
-    const targetScreen = document.getElementById(screenId);
-    if (targetScreen) {
-        targetScreen.classList.add('active-screen');
+    // Current Mission Status
+    let currentMissionName = "None";
+    if (playerState.currentMission === 1) {
+        currentMissionName = "The Jump Start";
+    } else if (playerState.currentMission === 2) {
+        currentMissionName = "The Rookie Contract";
+    }
+    document.querySelector('#my-stats-screen p:nth-child(4) strong').textContent = `Current Mission: ${currentMissionName}`;
+
+    // Mission Status Text
+    document.querySelector('#my-stats-screen p:nth-child(3) strong').textContent = `Mission Status: ${playerState.missionProgress >= 100 ? 'Complete' : 'Active'}`;
+}
+
+/**
+ * Updates the mission buttons based on completion status.
+ */
+function updateMissionButtons() {
+    // Mission 1
+    const m1Button = document.getElementById('mission-1-button');
+    if (playerState.missionsCompleted[1]) {
+        m1Button.textContent = "1. The Jump Start (COMPLETE)";
+        m1Button.disabled = true;
+    } else {
+        m1Button.textContent = "1. The Jump Start (IN PROGRESS)";
+        m1Button.disabled = false;
     }
 
-    // Special logic for My Hub screen
-    if (screenId === 'my-player') {
-        updateUI(); // Ensure the stats are current
+    // Mission 2
+    const m2Button = document.getElementById('mission-2-button');
+    if (playerState.missionsCompleted[2]) {
+        m2Button.textContent = "2. The Rookie Contract (COMPLETE)";
+        m2Button.disabled = true;
+    } else if (playerState.missionsCompleted[1]) {
+        m2Button.textContent = "2. The Rookie Contract (READY)";
+        m2Button.disabled = false;
+    } else {
+        m2Button.textContent = "2. The Rookie Contract (LOCKED)";
+        m2Button.disabled = true;
     }
-};
+}
+
+// ------------------- SCREEN NAVIGATION -------------------
+
+function showMainMenu() {
+    hideAllScreens();
+    // Stop the meter animation if returning from Mission 1
+    cancelAnimationFrame(animationFrameId);
+}
+
+function loadMissions() {
+    hideAllScreens();
+    document.getElementById('missions-screen').style.display = 'block';
+}
+
+function loadMyHub() {
+    hideAllScreens();
+    document.getElementById('my-hub-screen').style.display = 'block';
+}
+
+function loadMyStats() {
+    hideAllScreens();
+    document.getElementById('my-stats-screen').style.display = 'block';
+    updateStatsDisplay(); // Ensure stats are fresh
+}
+
+function loadOptions() {
+    hideAllScreens();
+    document.getElementById('options-screen').style.display = 'block';
+}
+
+function quitGame() {
+    hideAllScreens();
+    document.getElementById('quit-screen').style.display = 'block';
+    saveGame(false); // Silent save before quitting
+}
+
+function loadTraining() {
+    showCustomModal("Training Facility", "This area is under construction! Check back soon for new drills.", [{text: "Roger That", action: hideCustomModal}]);
+}
+
+function quickPlay() {
+    // Determine which mission to start based on progress
+    if (!playerState.missionsCompleted[1]) {
+        startMission(1);
+    } else if (!playerState.missionsCompleted[2]) {
+        startMission(2);
+    } else {
+        showCustomModal("All Done!", "You've completed all available missions! More content coming soon.", [{text: "Nice!", action: hideCustomModal}]);
+    }
+}
 
 /**
- * Shows the custom message modal.
- * Exposes the function globally via window.
- * @param {string} title The title of the message.
- * @param {string} text The body content of the message.
+ * Navigates to the selected mission screen and starts the mission logic.
+ * @param {number} missionId
  */
-window.showMessage = function (title, text) {
-    document.getElementById('modal-title').textContent = title;
-    document.getElementById('modal-text').textContent = text;
-    document.getElementById('message-modal').style.display = 'flex';
-};
-
-/**
- * Hides the custom message modal.
- * Exposes the function globally via window.
- */
-window.hideMessage = function () {
-    document.getElementById('message-modal').style.display = 'none';
-};
-
-// --- QUICK PLAY GAME LOGIC (Reflex Trainer) ---
-
-const METER_STATES = ["--", "WAIT...", "READY", "GO!", "PEAK!"];
-const METER_COLORS = ["#222", "#FFC107", "#4CAF50", "#2196F3", "#E91E63"]; 
-const METER_CYCLE_MS = 3000; // 3 seconds for one full cycle
-
-let isGameActive = false;
-
-/**
- * Starts the Quick Play Reflex Game loop.
- * Exposes the function globally via window.
- */
-window.startGameLoop = function () {
-    if (isGameActive) {
-        showMessage("Game Running", "The training is already in progress!");
+function startMission(missionId) {
+    if (!isAuthReady) {
+        showCustomModal("Loading...", "Please wait for player data to load.", [{text: "OK", action: hideCustomModal}]);
         return;
     }
-
-    isGameActive = true;
-    const button = document.getElementById('quick-play-button');
-    button.textContent = 'WAIT...';
-    button.disabled = false; // Enable for the click
-
-    document.getElementById('quick-play-score').textContent = "0";
-    document.getElementById('meter-display').textContent = METER_STATES[1];
-    document.getElementById('meter-display').style.backgroundColor = METER_COLORS[1];
     
-    // Set up the click handler logic (attached dynamically to handle state)
-    button.onclick = handleQuickPlayClick;
-
-    // Wait a random delay (1-3s) before starting the animation cycle
-    const initialDelay = Math.random() * 2000 + 1000;
+    // Check if locked
+    if (missionId === 2 && !playerState.missionsCompleted[1]) {
+        showCustomModal("Mission Locked", "You must complete 'The Jump Start' first!", [{text: "Got it!", action: hideCustomModal}]);
+        return;
+    }
     
-    setTimeout(() => {
-        gameTime = 0;
-        gameInterval = setInterval(animateMeter, 20); // Update every 20ms
-    }, initialDelay);
-};
+    hideAllScreens();
+    
+    if (missionId === 1) {
+        document.getElementById('mission-1-screen').style.display = 'block';
+        startMeter();
+    } else if (missionId === 2) {
+        document.getElementById('mission-2-screen').style.display = 'block';
+    }
+    playerState.currentMission = missionId;
+}
+
+
+// ==========================================================
+// 6. MISSION 1 GAMEPLAY (METER TIMING)
+// ==========================================================
 
 /**
- * Animates the meter display during the game loop.
+ * Starts the continuous meter animation loop.
  */
-function animateMeter() {
-    gameTime += 20; // 20ms increment
+function startMeter() {
     const meterDisplay = document.getElementById('meter-display');
-    const cyclePos = gameTime % METER_CYCLE_MS;
+    const feedback = document.getElementById('mission-feedback');
+    feedback.innerHTML = '<p style="color:#00c4ff;">Watch the meter... get ready!</p>';
     
-    // Simple timing meter states based on cycle position (0-3000ms)
+    // Reset meter to 0
+    meterValue = 0;
+    meterDirection = 1;
+    meterDisplay.textContent = '0';
     
-    if (cyclePos >= 2500) {
-        // Late/Failed zone (2500 - 3000)
-        meterDisplay.textContent = "TOO LATE!";
-        meterDisplay.style.backgroundColor = METER_COLORS[4]; 
-    } else if (cyclePos >= 2000) {
-        // PEAK ZONE (Optimal click window) (2000 - 2500)
-        meterDisplay.textContent = METER_STATES[4];
-        meterDisplay.style.backgroundColor = METER_COLORS[4];
-    } else if (cyclePos >= 1000) {
-        // GO! Zone (1000 - 2000)
-        meterDisplay.textContent = METER_STATES[3];
-        meterDisplay.style.backgroundColor = METER_COLORS[3];
-    } else if (cyclePos >= 500) {
-        // READY Zone (500 - 1000)
-        meterDisplay.textContent = METER_STATES[2];
-        meterDisplay.style.backgroundColor = METER_COLORS[2];
+    if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
     }
-    // else: WAIT... Zone (0 - 500)
     
-    if (gameTime > 5000) { // If it runs for more than 5s in total (multiple cycles), stop
-        endGame('miss', "You missed multiple cycles. Focus!");
-    }
+    // Start the loop
+    meterLoop();
 }
 
 /**
- * Handles the user clicking the Quick Play button during a game.
+ * The main animation loop for the timing meter.
  */
-function handleQuickPlayClick() {
-    if (!isGameActive) return;
+function meterLoop() {
+    // Update meter value
+    meterValue += meterDirection * meterSpeed;
 
-    clearInterval(gameInterval);
-    const cyclePos = gameTime % METER_CYCLE_MS;
-    const peakStart = 2000;
-    const peakEnd = 2500;
-    let score = 0;
-    let message = "";
+    // Boundary check (0 to 100)
+    if (meterValue >= 100) {
+        meterValue = 100;
+        meterDirection = -1; // Reverse direction
+    } else if (meterValue <= 0) {
+        meterValue = 0;
+        meterDirection = 1; // Reverse direction
+    }
 
-    if (cyclePos >= peakStart && cyclePos <= peakEnd) {
-        // Perfect Hit
-        score = 150;
-        message = "PERFECT HIT! +150 Influence! (Peak Performance)";
-    } else if (cyclePos > 1000 && cyclePos < 3000) {
-        // Good Timing (GO! Zone or Just missed PEAK)
-        const distanceToPeak = Math.min(Math.abs(cyclePos - peakStart), Math.abs(cyclePos - peakEnd));
-        // Score is proportional to how close they were to the peak
-        score = Math.max(20, 150 - Math.floor(distanceToPeak / 10)); 
-        message = `GOOD TIMING! +${score} Influence.`;
+    // Update the display, rounded to the nearest integer
+    document.getElementById('meter-display').textContent = Math.round(meterValue);
+    
+    // Request the next frame
+    animationFrameId = requestAnimationFrame(meterLoop);
+}
+
+/**
+ * Stops the meter and calculates the score/result.
+ */
+function stopMeter() {
+    cancelAnimationFrame(animationFrameId);
+    const finalValue = Math.round(meterValue);
+    const feedback = document.getElementById('mission-feedback');
+
+    let message = '';
+    let isSuccess = false;
+
+    if (finalValue >= 90 && finalValue <= 100) {
+        message = `<p style="color:#ff00ff;">PERFECT TIMING (${finalValue})! Mission 1 Complete. You earned a +2 rating boost!</p>`;
+        playerState.overallRating += 2;
+        playerState.missionProgress = 100;
+        playerState.missionsCompleted[1] = true;
+        isSuccess = true;
+    } else if (finalValue >= 80 || finalValue <= 20) {
+        message = `<p style="color:#00c4ff;">Good attempt (${finalValue}). You barely hit the target, but you passed! +1 rating boost.</p>`;
+        playerState.overallRating += 1;
+        playerState.missionProgress = 50; // Set to 50% for partial success
+        isSuccess = true;
     } else {
-        // Too Early or Too Late
-        score = -50; // Penalize early clicks slightly
-        message = "EARLY/LATE CLICK! Influence loss: 50";
+        message = `<p style="color:red;">MISS (${finalValue})! Timing was way off. Try again!</p>`;
+        playerState.missionProgress = 0;
     }
 
-    playerData.influence = Math.max(0, playerData.influence + score); // Ensure influence doesn't drop below 0
+    feedback.innerHTML = message;
     
-    document.getElementById('quick-play-score').textContent = score;
-    endGame('hit', message);
+    if (isSuccess) {
+        updateUI(); // Reflect score changes immediately
+        saveGame(false); // Save silently
+        
+        // Change the button to go back to the menu or retry
+        document.querySelector('#mission-1-screen .skill-button').textContent = "RETRY DRILL";
+        document.querySelector('#mission-1-screen .skill-button').onclick = startMeter;
+
+        if (playerState.missionsCompleted[1]) {
+            showCustomModal("Mission Complete!", `You nailed 'The Jump Start' and boosted your rating to ${playerState.overallRating}! Mission 2 is now available.`, [{text: "Next Mission", action: loadMissions}]);
+        }
+    }
+}
+
+
+// ==========================================================
+// 7. MISSION 2 GAMEPLAY (CONTRACT CHOICE)
+// ==========================================================
+
+/**
+ * Handles the completion of Mission 2 based on contract choice.
+ * @param {number} contractId - 1 for Contract A, 2 for Contract B
+ */
+function completeMission2(contractId) {
+    if (playerState.missionsCompleted[2]) return;
+
+    let boost;
+    let message;
+    
+    if (contractId === 1) {
+        // Contract A: High Incentives (+5 Overall Potential)
+        boost = 5;
+        message = `You chose Contract A! A gutsy choice focusing on incentives. Your current Overall Rating jumps by ${boost} points!`;
+    } else if (contractId === 2) {
+        // Contract B: Large Upfront Bonus (+1 Overall Potential)
+        boost = 1;
+        message = `You chose Contract B! A safe choice for the upfront bonus. Your current Overall Rating jumps by ${boost} point.`;
+    }
+
+    playerState.overallRating += boost;
+    playerState.missionProgress = 100;
+    playerState.missionsCompleted[2] = true;
+
+    // Update UI and Save
+    updateUI();
+    saveGame(false);
+
+    showCustomModal(
+        "Mission 2 Complete!",
+        message,
+        [
+            {text: "View Updated Stats", action: loadMyStats},
+            {text: "Back to Menu", action: showMainMenu}
+        ]
+    );
+}
+
+
+// ==========================================================
+// 8. CUSTOM MODAL (Replaces alert/confirm)
+// ==========================================================
+
+const modal = document.getElementById('custom-modal');
+const modalTitle = document.getElementById('modal-title');
+const modalMessage = document.getElementById('modal-message');
+const modalActions = document.getElementById('modal-actions');
+
+/**
+ * Displays the custom modal with dynamic content and action buttons.
+ * @param {string} title The title for the modal.
+ * @param {string} message The main message content.
+ * @param {Array<Object>} actions Array of button definitions: [{text: "Button Text", action: function}]
+ */
+function showCustomModal(title, message, actions) {
+    // Clear previous actions
+    modalActions.innerHTML = ''; 
+
+    // Set content
+    modalTitle.textContent = title;
+    modalMessage.textContent = message;
+
+    // Create buttons
+    actions.forEach(action => {
+        const button = document.createElement('button');
+        button.textContent = action.text;
+        
+        // Attach the provided function/action to the button's click event
+        button.onclick = () => {
+            // Execute the action first
+            action.action();
+            // Then, in most cases, close the modal, unless the action is designed to handle it
+            // We rely on the action function (e.g., hideCustomModal) to close it.
+        };
+        modalActions.appendChild(button);
+    });
+
+    // Show the modal
+    modal.style.display = 'flex'; 
 }
 
 /**
- * Ends the quick play game and updates state.
- * @param {string} status 'hit' or 'miss'.
- * @param {string} finalMessage The message to display.
+ * Hides the custom modal.
  */
-function endGame(status, finalMessage) {
-    isGameActive = false;
-    clearInterval(gameInterval);
-
-    const button = document.getElementById('quick-play-button');
-    button.textContent = 'START TRAINING';
-    // Reset click handler to start game
-    button.onclick = startGameLoop;
-    
-    document.getElementById('meter-display').textContent = METER_STATES[0];
-    document.getElementById('meter-display').style.backgroundColor = METER_COLORS[0];
-
-    // Update player data in Firestore and UI
-    savePlayerData({
-        influence: playerData.influence,
-        credits: playerData.credits
-    });
-    
-    showMessage("Training Complete", finalMessage);
+function hideCustomModal() {
+    modal.style.display = 'none';
 }
-
-
-// --- RUNTIME EXECUTION ---
-
-// Start the application when the window fully loads
-window.onload = initializeFirebase;
