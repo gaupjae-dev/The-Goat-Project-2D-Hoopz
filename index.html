@@ -4,87 +4,212 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>The G.O.A.T. Project</title>
-    <!-- Link to the external stylesheet -->
+    <!-- Link to the separate CSS file -->
     <link rel="stylesheet" href="style.css">
-    
-    <!-- Font Awesome for Icons (required for the menu icons) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/js/all.min.js" crossorigin="anonymous"></script>
-    
-    <!-- Three.js and Firebase imports are usually handled in script.js, but keeping the external links for completion -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Font for theme -->
+    <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
 
-    <!-- Display User ID/Status (for connection status) -->
-    <div id="user-id-display">
-        <small>Agent ID:</small><br>
-        <strong id="user-id">Connecting...</strong>
-    </div>
-
-    <!-- MAIN MENU SCREEN (Initial View) -->
-    <div id="main-menu" class="main-menu-container active-screen">
+    <!-- 1. MAIN MENU SCREEN (Always visible as the container, controls position of menu bar) -->
+    <div id="main-menu-container">
         <h1 class="main-title">THE G.O.A.T. PROJECT</h1>
-        <div class="menu-bar">
-            <!-- Note: onClick handlers reference functions that will be defined in script.js -->
-            <button class="menu-button" onclick="showScreen('my-player')"><i class="fas fa-user-tie"></i> MY HUB</button>
-            <button class="menu-button" onclick="showScreen('missions-log')"><i class="fas fa-list-check"></i> MISSIONS</button>
-            <button class="menu-button" onclick="showScreen('quick-play')"><i class="fas fa-running"></i> QUICK PLAY</button>
-            <button class="menu-button" onclick="showScreen('options')"><i class="fas fa-sliders"></i> OPTIONS</button>
-            <button class="menu-button" onclick="showMessage('System Shutdown', 'This feature is not implemented yet.')"><i class="fas fa-right-from-bracket"></i> QUIT</button>
-        </div>
-    </div>
-
-    <!-- MY HUB SCREEN (Player Stats) -->
-    <div id="my-player" class="my-player-container">
-        <h2>MY HUB <small>(Agent: <span id="hub-user-id"></span>)</small></h2>
-        <p><strong>Agent Name:</strong> <span id="player-name">Rogue Analyst</span></p>
-        <p><strong>Rank:</strong> <span id="player-rank">Rookie</span></p>
-        <p><strong>Influence (EXP):</strong> <span id="player-influence">0</span> / 100</p>
-        <div class="progress-bar-container"><div id="influence-bar" class="progress-bar"></div></div>
         
-        <h3>Current Assets</h3>
-        <p><strong>Credits:</strong> <span id="player-credits">500</span></p>
-        <p><strong>Skill Points:</strong> <span id="player-skill-points">0</span></p>
-
-        <button class="neon-btn" onclick="showScreen('main-menu')">BACK TO MAIN MENU</button>
+        <!-- Menu Bar at the bottom -->
+        <div class="menu-bar">
+            <!-- Quick Play Button added per original request -->
+            <button class="menu-button" onclick="quickPlay()">Quick Play</button>
+            <button class="menu-button" onclick="loadMissions()">Missions</button>
+            <button class="menu-button" onclick="loadMyHub()">My Hub</button>
+            <button class="menu-button" onclick="loadMyStats()">My Stats</button>
+            <button class="menu-button" onclick="loadOptions()">Options</button>
+            <button class="menu-button" onclick="quitGame()">Quit</button>
+        </div>
     </div>
 
-    <!-- MISSIONS LOG SCREEN -->
-    <div id="missions-log" class="missions-log-container">
-        <h2>MISSIONS LOG</h2>
+    <!-- 2. MISSIONS SCREEN (Initially Hidden) -->
+    <div id="missions-screen" class="missions-log-container" style="display: none;">
+        <h2>MISSIONS</h2>
         <div id="mission-list">
-            <!-- Missions will be dynamically loaded/listed here -->
-            <button class="mission-item" onclick="showMission(1)">
-                <span>M1: The First Contract</span>
-                <span>(EASY - <i class="fas fa-medal"></i> 10 XP)</span>
-            </button>
+            <!-- Buttons dynamically updated by loadMissions() -->
+            <button id="mission-1-button" class="mission-item" onclick="startMission(1)">1. The Jump Start (IN PROGRESS)</button>
+            <button id="mission-2-button" class="mission-item" onclick="startMission(2)">2. The Rookie Contract (LOCKED)</button>
+            <!-- Back Button -->
+            <button class="menu-button" onclick="showMainMenu()">Back to Menu</button>
         </div>
-        <button class="neon-btn" onclick="showScreen('main-menu')">RETURN</button>
+    </div>
+
+    <!-- 3. MY HUB SCREEN (Initially Hidden) -->
+    <div id="my-hub-screen" class="my-player-container" style="display: none;">
+        <h2>MY HUB</h2>
+        <p>This is your personal training and management center.</p>
+        <!-- Hub Links -->
+        <button class="menu-button" onclick="loadTraining()">Training Facility</button>
+        <button class="menu-button" onclick="loadMyStats()">View Stats</button>
+        <!-- Back Button -->
+        <button class="menu-button" onclick="showMainMenu()">Back to Menu</button>
+    </div>
+
+    <!-- 4. MY STATS SCREEN (Initially Hidden) -->
+    <div id="my-stats-screen" class="my-player-container" style="display: none;">
+        <h2>PLAYER STATS</h2>
+        <p><strong>Player ID:</strong> <span id="player-id-display">Loading...</span></p>
+        <p><strong>Overall Rating:</strong> 75</p>
+        <p><strong>Mission Status:</strong> Active</p>
+        <p><strong>Current Mission:</strong> The Jump Start</p>
+        
+        <h3>Career Progress</h3>
+        <div class="progress-bar-container">
+            <div id="mission-progress-bar" class="progress-bar" style="width: 0%;"></div>
+        </div>
+        <!-- Back Button -->
+        <button class="menu-button" onclick="loadMyHub()">Back to Hub</button>
+    </div>
+
+    <!-- 5. OPTIONS SCREEN (Initially Hidden) -->
+    <div id="options-screen" class="options-container" style="display: none;">
+        <h2>OPTIONS</h2>
+        <!-- Save/Load/Reset Buttons - Now use Firestore -->
+        <button class="menu-button" onclick="saveGame()">SAVE GAME (Cloud)</button>
+        <button class="menu-button" onclick="loadGame()">LOAD GAME (Cloud)</button>
+        <button class="menu-button" onclick="confirmResetGame()">RESET ALL PROGRESS (Cloud)</button>
+        <!-- Back Button -->
+        <button class="menu-button" onclick="showMainMenu()">Back to Menu</button>
+    </div>
+
+    <!-- 6. QUIT SCREEN (Initially Hidden) -->
+    <div id="quit-screen" class="quit-container" style="display: none;">
+        <h2>QUIT GAME</h2>
+        <p>Are you sure you want to quit the G.O.A.T. Project?</p>
+        <!-- Confirmation Buttons -->
+        <button class="menu-button" onclick="showMainMenu()">No, Go Back</button>
+        <button class="menu-button" onclick="showCustomModal('Game Quit', 'Thank you for playing! Your game state has been saved to the cloud.', [{text: 'OK', action: hideCustomModal}])">Yes, Quit</button>
     </div>
     
-    <!-- QUICK PLAY SCREEN (Simple Game Loop) -->
-    <div id="quick-play" class="quick-play-screen">
-        <h2>QUICK PLAY: Rapid Reflex Training</h2>
-        <p>Sharpen your reaction time. Click the button exactly when the meter is at its peak.</p>
-        <!-- The canvas for 3D/2D game will be injected here by JavaScript or defined with max-width -->
-        <!-- <canvas id="game-canvas"></canvas> -->
-        <div id="meter-display">--</div>
-        <button id="quick-play-button" class="skill-button" onclick="startGameLoop()">START TRAINING</button>
-        <p>Last Score: <span id="quick-play-score">N/A</span></p>
-        <button class="neon-btn" onclick="showScreen('main-menu')" style="margin-top: 20px;">BACK</button>
+    <!-- 7. MISSION 1: THE JUMP START (Gameplay Screen) -->
+    <div id="mission-1-screen" class="mission-screen" style="display: none;">
+        <h2>MISSION 1: The Jump Start</h2>
+        <p>Timing Drill: Hit the "Shoot" button when the meter is between **90 and 100** for a perfect pass!</p>
+
+        <div class="mission-content">
+            <div id="meter-display">0</div>
+            <button class="skill-button" onclick="stopMeter()">SHOOT / PASS</button>
+        </div>
+
+        <div id="mission-feedback"></div>
+        <button class="menu-button" onclick="showMainMenu()">Back to Menu</button>
     </div>
 
+    <!-- 8. MISSION 2: THE ROOKIE CONTRACT (Gameplay Screen) -->
+    <div id="mission-2-screen" class="mission-screen" style="display: none;">
+        <h2>MISSION 2: The Rookie Contract</h2>
+        <p>You've received two contract offers. Choose wisely—your long-term potential depends on this decision!</p>
+        
+        <div class="mission-content">
+            <!-- Contract Choice 1 -->
+            <button class="menu-button contract-button" onclick="completeMission2(1)">
+                Contract A: High Incentives (+5 Overall Potential)
+            </button>
+            <!-- Contract Choice 2 -->
+            <button class="menu-button contract-button" onclick="completeMission2(2)">
+                Contract B: Large Upfront Bonus (+1 Overall Potential)
+            </button>
+        </div>
+        <!-- Back Button -->
+        <button class="menu-button" onclick="showMainMenu()">Back to Menu</button>
+    </div>
 
-    <!-- CUSTOM MESSAGE MODAL (Replaces alert/confirm) -->
-    <div id="message-modal">
-        <div id="message-box">
+    <!-- 9. Custom Modal for Confirmation/Alerts (Replaces alert() and confirm()) -->
+    <div id="custom-modal" style="display: none;" class="modal-backdrop">
+        <div class="modal-content">
             <h3 id="modal-title"></h3>
-            <p id="modal-text" class="modal-text"></p>
-            <button id="modal-ok-btn" class="neon-btn" onclick="hideMessage()">OKAY</button>
+            <p id="modal-message"></p>
+            <div id="modal-actions" class="flex justify-center space-x-4 mt-6">
+                <!-- Buttons will be injected here -->
+            </div>
         </div>
     </div>
 
-    <!-- Link to the external JavaScript file -->
+    <!-- FIREBASE AND SCRIPT IMPORTS -->
+    <script type="module">
+        // Mandatory global variables provided by the environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // Firebase SDK Imports
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, updateDoc, deleteDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // Expose Firebase components and context variables globally for script.js
+        window.initializeApp = initializeApp;
+        window.getAuth = getAuth;
+        window.signInAnonymously = signInAnonymously;
+        window.signInWithCustomToken = signInWithCustomToken;
+        window.onAuthStateChanged = onAuthStateChanged;
+        window.getFirestore = getFirestore;
+        window.doc = doc;
+        window.setDoc = setDoc;
+        window.onSnapshot = onSnapshot;
+        window.updateDoc = updateDoc;
+        window.deleteDoc = deleteDoc;
+        window.setLogLevel = setLogLevel;
+
+        // Expose context variables
+        window.globalAppId = appId;
+        window.globalFirebaseConfig = firebaseConfig;
+        window.globalInitialAuthToken = initialAuthToken;
+    </script>
+    <!-- Load the main game logic script -->
     <script type="module" src="script.js"></script>
+
+    <!-- Modal CSS (Inline to ensure immediate availability for alerts) -->
+    <style>
+        .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.85);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: rgba(10, 10, 30, 0.95);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 40px rgba(255, 0, 255, 0.5);
+            width: 90%;
+            max-width: 400px;
+            text-align: center;
+            border: 2px solid #ff00ff;
+        }
+        .modal-content h3 {
+            color: #00c4ff;
+            font-size: 1.5em;
+            margin-bottom: 15px;
+        }
+        .modal-content button {
+            background-color: #ff00ff;
+            color: #1a1a2e;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 1em;
+            border-radius: 5px;
+            transition: all 0.2s ease;
+            font-weight: bold;
+        }
+        .modal-content button:hover {
+            background-color: #00c4ff;
+            box-shadow: 0 0 10px rgba(0, 196, 255, 0.5);
+        }
+        
+    </style>
 </body>
 </html>
