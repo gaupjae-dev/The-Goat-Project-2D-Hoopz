@@ -3,10 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Basketball Hoopz</title>
+    <title>GOAT Quick Play Challenge</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #0d0d0d; font-family: 'Arial', sans-serif; }
+        /* Neon Aesthetic */
+        body { margin: 0; overflow: hidden; background-color: #000000; font-family: 'Inter', sans-serif; }
         canvas { display: block; }
+
         #overlay {
             position: absolute;
             top: 0;
@@ -14,41 +16,61 @@
             width: 100%;
             padding: 15px;
             color: white;
-            background: rgba(0, 0, 0, 0.7);
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-            border-bottom-left-radius: 8px;
-            border-bottom-right-radius: 8px;
+            background: rgba(0, 0, 0, 0.9);
+            box-shadow: 0 0 15px #00c4ff; /* Neon blue shadow */
             text-align: center;
             z-index: 10;
             display: flex;
             flex-direction: column;
             align-items: center;
+            border-bottom: 2px solid #00c4ff;
         }
+
+        #missionInfo {
+            display: flex;
+            justify-content: space-around;
+            width: 90%;
+            max-width: 400px;
+            margin-bottom: 10px;
+            padding: 5px 0;
+            border-bottom: 1px dashed #ff00ff; /* Magenta dashed line */
+        }
+
+        #timerDisplay, #overallDisplay {
+            font-size: 1.2em;
+            color: #ff00ff; /* Magenta for secondary info */
+            font-weight: bold;
+        }
+
         #scoreDisplay {
-            font-size: 1.8em;
+            font-size: 2.2em;
             font-weight: bold;
             margin-bottom: 8px;
-            color: #4CAF50; /* Green color for score */
+            color: #00c4ff; /* Neon blue for score */
+            text-shadow: 0 0 8px #00c4ff;
             transition: color 0.2s, transform 0.2s;
         }
+
         #controls {
             margin-top: 10px;
-            font-size: 1.1em;
-            color: #4CAF50; /* Green highlight for controls */
+            font-size: 1em;
+            color: #ff00ff; 
         }
         .control-key {
-            background: #222;
+            background: #0d0d0d;
             padding: 2px 6px;
-            border-radius: 3px;
+            border-radius: 4px;
             margin: 0 4px;
-            border: 1px solid #333;
+            border: 1px solid #00c4ff;
+            box-shadow: 0 0 5px rgba(0, 196, 255, 0.5);
         }
+
         #cameraToggle {
             position: absolute;
             top: 10px;
             left: 10px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 2px solid #4CAF50;
+            background: rgba(0, 196, 255, 0.1);
+            border: 2px solid #00c4ff;
             color: white;
             width: 40px;
             height: 40px;
@@ -59,15 +81,78 @@
             font-size: 20px;
             cursor: pointer;
             transition: background 0.2s;
+            z-index: 11;
         }
         #cameraToggle:hover {
-            background: rgba(255, 255, 255, 0.2);
+            background: rgba(0, 196, 255, 0.3);
+        }
+
+        /* Mission Complete Modal */
+        #modal {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+        }
+        #modalContent {
+            background: #111;
+            padding: 30px;
+            border-radius: 12px;
+            border: 3px solid #ff00ff;
+            box-shadow: 0 0 20px #ff00ff, inset 0 0 10px #ff00ff;
+            text-align: center;
+            max-width: 90%;
+        }
+        #modalContent h2 {
+            color: #00c4ff;
+            font-size: 2em;
+            text-shadow: 0 0 5px #00c4ff;
+            margin-bottom: 10px;
+        }
+        #modalContent p {
+            color: #fff;
+            margin: 15px 0;
+            font-size: 1.1em;
+        }
+        #closeModal {
+            background: #ff00ff;
+            color: black;
+            font-weight: bold;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s, box-shadow 0.2s;
+            margin-top: 20px;
+        }
+        #closeModal:hover {
+            background: #fff;
+            box-shadow: 0 0 10px #ff00ff;
         }
     </style>
     <!-- Three.js Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <!-- Cannon.js Physics Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+    <!-- Firebase Imports -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // Expose Firebase functions globally for the non-module script
+        window.firebase = {
+            initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, 
+            getFirestore, doc, getDoc, setDoc, setLogLevel
+        };
+    </script>
 </head>
 <body>
     <div id="cameraToggle" onclick="toggleCamera()" title="Toggle First/Third Person View">
@@ -75,32 +160,54 @@
     </div>
 
     <div id="overlay">
-        <h1>Quick Play Mode</h1>
-        <div id="scoreDisplay">Score: 0</div>
-        <p>Use the controls below to dribble and shoot!</p>
+        <h1>GOAT Quick Play Challenge (Mission 3)</h1>
+        <div id="missionInfo">
+            <div id="timerDisplay">Time: 60s</div>
+            <div id="overallDisplay">Overall: 75</div>
+        </div>
+        <div id="scoreDisplay">Score: 0 / 15</div>
         <div id="controls">
-            Move: <span class="control-key">W</span> (Forward) <span class="control-key">A</span> (Left Dribble) <span class="control-key">S</span> (Backward) <span class="control-key">D</span> (Right Dribble)<br>
-            Shoot: <span class="control-key">E</span>
+            Move: <span class="control-key">W</span> <span class="control-key">A</span> <span class="control-key">S</span> <span class="control-key">D</span> | Shoot: <span class="control-key">E</span>
+        </div>
+    </div>
+
+    <div id="modal">
+        <div id="modalContent">
+            <h2 id="modalTitle"></h2>
+            <p id="modalMessage"></p>
+            <button id="closeModal" onclick="closeModal()">Continue</button>
         </div>
     </div>
 
     <script>
+        // --- FIREBASE AND GAME STATE ---
+        let db, auth;
+        let userId = 'anon';
+        let playerOverall = 75;
+        let playerCurrentMission = 3; // Start at Mission 3 for this challenge
+        let isAuthReady = false;
+
+        // MISSION GOALS
+        const GAME_DURATION = 60; // seconds
+        const SCORE_GOAL = 15;
+        let timeRemaining = GAME_DURATION;
+        let gameActive = false;
+        let gameInterval;
+
         // --- SCENE SETUP (THREE.JS) ---
         let scene, camera, renderer;
-        let world; // Cannon.js world
+        let world;
         let ballMesh, ballBody;
         let playerVelocity = new THREE.Vector3();
         let isShooting = false;
         
         // GAME STATE & SCORE
         let score = 0;
-        let scoreDisplay;
-        let hasScored = false; // Flag to prevent multiple scores on one shot
-
-        // HOOP POSITION IS NOW AT Z=15, FACING TOWARDS THE CENTER OF THE COURT (NEGATIVE Z)
+        let scoreDisplay, timerDisplay, overallDisplay;
+        let hasScored = false; 
         let hoopPosition = new THREE.Vector3(0, 3.05, 15); 
-        let shootForce = 15; // The power of the E key shot
-        let playerPosition = new THREE.Vector3(0, 1.8, -5); // Tracks the player's core location (start on the opposite side)
+        let shootForce = 15; // Base power
+        let playerPosition = new THREE.Vector3(0, 1.8, -5); 
 
         // Player/Camera controls
         let moveForward = false;
@@ -115,11 +222,100 @@
         const playerHeight = 1.8;
         const ballRadius = 0.25;
 
+        // --- FIREBASE FUNCTIONS ---
+        async function setupFirebaseAndLoadGame() {
+            try {
+                // Parse the config and initialize Firebase
+                const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+                if (!firebaseConfig.apiKey) {
+                    console.error("Firebase config is missing. Running in local mode.");
+                    // In local mode, skip firebase setup
+                    playerOverall = 75; 
+                    overallDisplay.textContent = `Overall: ${playerOverall}`;
+                    isAuthReady = true;
+                    startGame();
+                    return;
+                }
+
+                firebase.setLogLevel('Debug');
+                const app = firebase.initializeApp(firebaseConfig);
+                db = firebase.getFirestore(app);
+                auth = firebase.getAuth(app);
+
+                // Authenticate the user
+                const authToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                if (authToken) {
+                    await firebase.signInWithCustomToken(auth, authToken);
+                } else {
+                    await firebase.signInAnonymously(auth);
+                }
+
+                userId = auth.currentUser?.uid || crypto.randomUUID();
+                
+                // Load or Initialize Game Data
+                await loadPlayerData(appId);
+                isAuthReady = true;
+                startGame(); // Start the game only after auth is ready
+
+            } catch (error) {
+                console.error("Error setting up Firebase or authenticating:", error);
+                // Fallback to local mode on error
+                playerOverall = 75; 
+                overallDisplay.textContent = `Overall: ${playerOverall}`;
+                isAuthReady = true;
+                startGame();
+            }
+        }
+
+        async function loadPlayerData(appId) {
+            const docRef = firebase.doc(db, `/artifacts/${appId}/users/${userId}/playerData/stats`);
+            try {
+                const docSnap = await firebase.getDoc(docRef);
+
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    playerOverall = data.overall || 75;
+                    playerCurrentMission = data.mission || 3;
+                    console.log("Player data loaded:", data);
+                } else {
+                    // Initialize new user data
+                    await savePlayerData(appId, 75, 3);
+                    playerOverall = 75;
+                    playerCurrentMission = 3;
+                    console.log("New player data initialized.");
+                }
+                overallDisplay.textContent = `Overall: ${playerOverall}`;
+            } catch (e) {
+                console.error("Error loading player data:", e);
+            }
+        }
+
+        async function savePlayerData(appId, newOverall, newMission) {
+            const docRef = firebase.doc(db, `/artifacts/${appId}/users/${userId}/playerData/stats`);
+            try {
+                await firebase.setDoc(docRef, {
+                    overall: newOverall,
+                    mission: newMission,
+                    lastPlayed: new Date().toISOString()
+                }, { merge: true });
+                console.log("Player data saved successfully.");
+            } catch (e) {
+                console.error("Error saving player data:", e);
+            }
+        }
+
         // --- INITIALIZATION ---
         function init() {
+            // Get UI elements
+            scoreDisplay = document.getElementById('scoreDisplay');
+            timerDisplay = document.getElementById('timerDisplay');
+            overallDisplay = document.getElementById('overallDisplay');
+
             // 1. Scene and Renderer
             scene = new THREE.Scene();
-            scene.fog = new THREE.Fog(0x111111, 0, 40);
+            scene.fog = new THREE.Fog(0x000000, 1, 40);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -128,14 +324,14 @@
 
             // 2. Camera Setup (The Player)
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.copy(playerPosition); // Start at player position
-            camera.lookAt(hoopPosition); // Start by looking at the hoop
+            camera.position.copy(playerPosition); 
+            camera.lookAt(hoopPosition); 
 
             // 3. Lighting
-            const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+            const ambient = new THREE.AmbientLight(0xffffff, 0.3);
             scene.add(ambient);
 
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
             directionalLight.position.set(10, 15, 10);
             directionalLight.castShadow = true;
             directionalLight.shadow.mapSize.width = 2048;
@@ -158,78 +354,149 @@
             document.addEventListener('keydown', onKeyDown, false);
             document.addEventListener('keyup', onKeyUp, false);
             
-            // 8. Score Setup
-            scoreDisplay = document.getElementById('scoreDisplay');
-            scoreDisplay.textContent = 'Score: 0';
-
+            // 8. Start Auth Process
+            setupFirebaseAndLoadGame();
+            
+            // Start the Three.js render loop immediately, but game logic only runs when auth is ready
             animate();
         }
+
+        function startGame() {
+            // Set shoot force based on player overall (75 base + 0.1 per point over 75)
+            shootForce = 15 + (playerOverall - 75) * 0.1; 
+            console.log(`Starting game with Shoot Force: ${shootForce.toFixed(2)} (Overall: ${playerOverall})`);
+
+            gameActive = true;
+            resetScore();
+            resetTimer();
+
+            // Start game interval (timer and game state checks)
+            gameInterval = setInterval(gameLoop, 1000);
+        }
+
+        // --- GAME LOOP & END CONDITION ---
+        function gameLoop() {
+            if (!gameActive) {
+                clearInterval(gameInterval);
+                return;
+            }
+
+            timeRemaining--;
+            timerDisplay.textContent = `Time: ${timeRemaining}s`;
+
+            if (timeRemaining <= 0) {
+                gameActive = false;
+                handleGameEnd();
+            }
+        }
+
+        function handleGameEnd() {
+            let title, message;
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+            if (score >= SCORE_GOAL) {
+                // Success: Reward and Mission Advancement
+                const newOverall = playerOverall + 1;
+                const newMission = playerCurrentMission + 1;
+                
+                title = "MISSION COMPLETE!";
+                message = `You scored ${score} points and hit the goal of ${SCORE_GOAL}! Your Overall Rating increases to ${newOverall}. You have unlocked Mission ${newMission}.`;
+                
+                if (isAuthReady && db) {
+                    savePlayerData(appId, newOverall, newMission);
+                } else {
+                     message += " (Note: Progress not saved - Firebase is offline)";
+                }
+                // Update local state for display
+                playerOverall = newOverall; 
+                overallDisplay.textContent = `Overall: ${playerOverall}`;
+            } else {
+                // Failure: No Reward
+                title = "MISSION FAILED!";
+                message = `You scored ${score} points, but needed ${SCORE_GOAL} in the time limit. Try again, GOAT!`;
+            }
+
+            openModal(title, message);
+        }
+
+        // --- UI & MODAL HANDLING ---
+        function openModal(title, message) {
+            document.getElementById('modalTitle').textContent = title;
+            document.getElementById('modalMessage').textContent = message;
+            document.getElementById('modal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('modal').style.display = 'none';
+            // Reset game for another try
+            startGame();
+        }
+
+        function resetScore() {
+            score = 0;
+            scoreDisplay.textContent = `Score: ${score} / ${SCORE_GOAL}`;
+        }
+
+        function resetTimer() {
+            timeRemaining = GAME_DURATION;
+            timerDisplay.textContent = `Time: ${timeRemaining}s`;
+        }
+
 
         // --- OBJECT CREATION ---
 
         function createCourt() {
-            // THREE.js Mesh (Visual)
             const courtWidth = 30;
             const courtLength = 60;
             const courtGeometry = new THREE.PlaneGeometry(courtWidth, courtLength);
-            const courtMaterial = new THREE.MeshStandardMaterial({ color: 0xcc8855, side: THREE.DoubleSide });
+            // Dark, almost black court floor
+            const courtMaterial = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, side: THREE.DoubleSide }); 
             const courtMesh = new THREE.Mesh(courtGeometry, courtMaterial);
             courtMesh.rotation.x = Math.PI / 2;
             courtMesh.receiveShadow = true;
             scene.add(courtMesh);
 
-            // CANNON.js Body (Physics)
             const courtShape = new CANNON.Plane();
             const courtBody = new CANNON.Body({ mass: 0, material: new CANNON.Material('courtMat') });
             courtBody.addShape(courtShape);
-            courtBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2); // Rotate to be flat
+            courtBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2); 
             world.addBody(courtBody);
             
-            // --- BACK WALL (To make the empty space behind the hoop disappear) ---
             const wallGeo = new THREE.BoxGeometry(courtWidth, 20, 1);
-            const wallMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+            const wallMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0a });
             const wallMesh = new THREE.Mesh(wallGeo, wallMat);
-            // Place just beyond the court boundary at Z=30 (the new hoop side)
             wallMesh.position.set(0, 10, courtLength / 2 + 0.5); 
             scene.add(wallMesh);
             
-            // --- COURT LINES ---
             drawCourtLines(courtWidth, courtLength);
         }
 
         function drawCourtLines(courtWidth, courtLength) {
-            const lineColor = 0xffffff;
+            const lineColor = 0x00c4ff; // Neon Blue
             const lineWidth = 0.05;
 
-            // Helper to create a line mesh
             function createLine(width, depth, x, z, rotationY = 0) {
                 const geo = new THREE.BoxGeometry(width, lineWidth, depth);
                 const mat = new THREE.MeshBasicMaterial({ color: lineColor });
                 const mesh = new THREE.Mesh(geo, mat);
                 mesh.position.set(x, 0.01, z);
                 mesh.rotation.y = rotationY;
-                mesh.receiveShadow = true;
                 scene.add(mesh);
             }
             
-            // 1. Out of Bounds Lines (Perimeter)
-            createLine(courtWidth, lineWidth, 0, -courtLength / 2 + lineWidth / 2); // Back line (start side)
-            createLine(courtWidth, lineWidth, 0, courtLength / 2 - lineWidth / 2);  // Back line (hoop side)
-            createLine(lineWidth, courtLength, -courtWidth / 2 + lineWidth / 2, 0); // Side line left
-            createLine(lineWidth, courtLength, courtWidth / 2 - lineWidth / 2, 0);  // Side line right
-
-            // 2. Center Court Line
+            // Perimeter & Center lines
+            createLine(courtWidth, lineWidth, 0, -courtLength / 2 + lineWidth / 2); 
+            createLine(courtWidth, lineWidth, 0, courtLength / 2 - lineWidth / 2);  
+            createLine(lineWidth, courtLength, -courtWidth / 2 + lineWidth / 2, 0); 
+            createLine(lineWidth, courtLength, courtWidth / 2 - lineWidth / 2, 0);  
             createLine(courtWidth, lineWidth, 0, 0); 
             
-            // 3. Free Throw Line (Approx 4.6m from hoop center)
-            const freeThrowZ = hoopPosition.z - 4.6; // Line is in front of the hoop (negative Z offset)
+            // Free Throw Line
+            const freeThrowZ = hoopPosition.z - 4.6; 
             createLine(3.6, lineWidth, 0, freeThrowZ); 
 
-            // 4. Three Point Arc (Radius 6.75m from hoop center)
-            const threePointRadius = 6.75; 
-            
             // Three Point Arc
-            // Rotate the arc to face away from the brick wall
+            const threePointRadius = 6.75; 
             const arcGeo = new THREE.RingGeometry(threePointRadius - lineWidth / 2, threePointRadius + lineWidth / 2, 64, 1, -Math.PI * 0.5, Math.PI); 
             const arcMat = new THREE.MeshBasicMaterial({ color: lineColor, side: THREE.DoubleSide });
             const arcMesh = new THREE.Mesh(arcGeo, arcMat);
@@ -237,12 +504,12 @@
             arcMesh.position.set(hoopPosition.x, 0.01, hoopPosition.z);
             scene.add(arcMesh);
             
-            // Three Point Straights (straight sections)
+            // Three Point Straights
             const straightLength = 3.6; 
-            const straightStartDepth = hoopPosition.z - 1.25; // Line becomes straight closer to the hoop Z 
+            const straightStartDepth = hoopPosition.z - 1.25; 
             
-            createLine(lineWidth, straightLength, -threePointRadius, straightStartDepth); // Left straight
-            createLine(lineWidth, straightLength, threePointRadius, straightStartDepth); // Right straight
+            createLine(lineWidth, straightLength, -threePointRadius, straightStartDepth); 
+            createLine(lineWidth, straightLength, threePointRadius, straightStartDepth); 
         }
 
         function createHoop() {
@@ -251,106 +518,94 @@
             const backboardWidth = 2;
             const backboardHeight = 1.05; 
             const poleHeight = 6.05;
-            
-            // Offsets
-            const rimOverhang = 1.0; // The rim sticks out 1 meter 
-            const backboardZ = hoopPosition.z - rimOverhang; // Backboard is set behind the rim
-            const poleZ = backboardZ - 0.5; // Pole placement behind the backboard
+            const rimOverhang = 1.0; 
+            const backboardZ = hoopPosition.z - rimOverhang; 
+            const poleZ = backboardZ - 0.5; 
 
-            // --- 1. POLE (Visual) ---
+            // 1. POLE 
             const poleGeo = new THREE.CylinderGeometry(0.1, 0.1, poleHeight, 12);
-            const poleMat = new THREE.MeshStandardMaterial({ color: 0x444444 });
+            const poleMat = new THREE.MeshStandardMaterial({ color: 0x222222 }); // Dark gray/black pole
             const poleMesh = new THREE.Mesh(poleGeo, poleMat);
             poleMesh.position.set(hoopPosition.x, hoopPosition.y - (poleHeight / 2) + 0.05, poleZ);
             poleMesh.castShadow = true;
             scene.add(poleMesh);
 
-            // --- 2. BACKBOARD (Visual and Physics) ---
-            
-            // Backboard Visual Group
-            const backboardGroup = new THREE.Group();
-
-            // Main Board (White)
+            // 2. BACKBOARD (Neon Clear Look)
             const mainBoardGeo = new THREE.BoxGeometry(backboardWidth, backboardHeight, 0.05);
-            const mainBoardMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee });
+            // Use a transparent material with neon glow
+            const mainBoardMat = new THREE.MeshStandardMaterial({ 
+                color: 0x00c4ff, 
+                transparent: true, 
+                opacity: 0.2, 
+                emissive: 0x00c4ff, 
+                emissiveIntensity: 0.5 
+            });
             const mainBoardMesh = new THREE.Mesh(mainBoardGeo, mainBoardMat);
-            // Position the main board mesh relative to the scene, based on the calculated backboard Z
             mainBoardMesh.position.set(hoopPosition.x, hoopPosition.y + (backboardHeight / 2), backboardZ);
             mainBoardMesh.castShadow = true;
-            backboardGroup.add(mainBoardMesh);
+            scene.add(mainBoardMesh);
 
-            // Red Target Box (inside the main board)
+            // Red Target Box (inside the main board) - use magenta for neon look
             const targetBoxWidth = 0.6;
             const targetBoxHeight = 0.45;
             const targetGeo = new THREE.BoxGeometry(targetBoxWidth, targetBoxHeight, 0.01);
-            const targetMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+            const targetMat = new THREE.MeshBasicMaterial({ color: 0xff00ff });
             const targetMesh = new THREE.Mesh(targetGeo, targetMat);
-            targetMesh.position.set(0, 0, -0.03); // Slightly in front of the main board (relative to its center)
+            targetMesh.position.set(0, 0, -0.03); 
             mainBoardMesh.add(targetMesh); 
 
-            // Backboard Physics (Cannon)
+            // Backboard Physics
             const backboardShape = new CANNON.Box(new CANNON.Vec3(backboardWidth / 2, backboardHeight / 2, 0.025));
             const backboardBody = new CANNON.Body({ mass: 0, material: new CANNON.Material('boardMat') });
             backboardBody.addShape(backboardShape);
             backboardBody.position.set(hoopPosition.x, hoopPosition.y + (backboardHeight / 2), backboardZ);
             world.addBody(backboardBody);
 
-            scene.add(backboardGroup);
-
-            // --- 3. RIM & BRACE (Physics Rim is at hoopPosition.z) ---
-            
-            // Visual Rim
+            // 3. RIM & BRACE 
             const rimGeo = new THREE.TorusGeometry(rimRadius, rimThickness, 8, 32);
-            const rimMat = new THREE.MeshStandardMaterial({ color: 0xff4400 });
+            const rimMat = new THREE.MeshStandardMaterial({ color: 0xff00ff, emissive: 0xff00ff, emissiveIntensity: 0.8 }); // Neon Magenta Rim
             const rimMesh = new THREE.Mesh(rimGeo, rimMat);
             rimMesh.rotation.x = Math.PI / 2;
             rimMesh.position.set(hoopPosition.x, hoopPosition.y, hoopPosition.z);
             rimMesh.castShadow = true;
             scene.add(rimMesh);
             
-            // Support Brace 
+            // Support Brace (Dark)
             const braceGeo = new THREE.BoxGeometry(0.1, 0.1, rimOverhang - 0.2);
-            const braceMat = new THREE.MeshStandardMaterial({ color: 0xff4400 });
+            const braceMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
             const braceMesh = new THREE.Mesh(braceGeo, braceMat);
-            braceMesh.rotation.x = Math.PI / 4; // Angle the brace to point from backboard down to rim
-            // Position it midway between the backboard and the rim
+            braceMesh.rotation.x = Math.PI / 4; 
             braceMesh.position.set(hoopPosition.x, hoopPosition.y + 0.15, backboardZ + (rimOverhang / 2) - 0.1); 
             scene.add(braceMesh);
 
             // Physics Rim (Cannon)
             const rimShape = new CANNON.Cylinder(rimRadius, rimRadius, rimThickness * 2, 16);
             const rimBody = new CANNON.Body({ mass: 0, material: new CANNON.Material('rimMat') });
-            // Rotate the cylinder to be horizontal
             rimBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), Math.PI / 2);
             rimBody.addShape(rimShape);
             rimBody.position.copy(rimMesh.position);
             world.addBody(rimBody);
 
 
-            // --- 4. NET (Visual Only) ---
+            // 4. NET (Neon Wireframe)
             const netHeight = 1.2;
-            // Using LineSegments for a wireframe look
             const netGeo = new THREE.ConeGeometry(rimRadius * 1.1, netHeight, 16, 1, true); 
             const edges = new THREE.EdgesGeometry(netGeo);
-            const netMesh = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2, transparent: true, opacity: 0.8 }));
+            const netMesh = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x00c4ff, linewidth: 3, transparent: true, opacity: 1 }));
             netMesh.position.set(hoopPosition.x, hoopPosition.y - netHeight / 2, hoopPosition.z);
             scene.add(netMesh);
 
-            // --- 5. SCORING ZONE (Invisible Physics Trigger) ---
-            // This remains centered under the rim (hoopPosition.z)
+            // 5. SCORING ZONE
             const scoringShape = new CANNON.Cylinder(rimRadius * 0.9, rimRadius * 0.9, 0.5, 16);
             const scoringBody = new CANNON.Body({ mass: 0, material: new CANNON.Material('scoreMat') });
             scoringBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), Math.PI / 2);
             scoringBody.addShape(scoringShape);
             scoringBody.position.set(hoopPosition.x, hoopPosition.y - 0.25, hoopPosition.z);
-            scoringBody.collisionResponse = 0; // Makes it a pure trigger, no physical bounce
+            scoringBody.collisionResponse = 0; 
             world.addBody(scoringBody);
             
-            // Attach a collision event listener for scoring
             scoringBody.addEventListener('collide', function(event) {
-                // Check if the colliding body is the basketball
-                if (event.body === ballBody && isShooting && !hasScored) {
-                    // Check if the ball is moving downwards (essential for scoring)
+                if (event.body === ballBody && isShooting && !hasScored && gameActive) {
                     if (ballBody.velocity.y < -0.1) {
                         scorePoint();
                     }
@@ -359,69 +614,78 @@
         }
 
         function createBall() {
-            // THREE.js Mesh (Visual)
+            // Neon Orange Ball
             const ballGeometry = new THREE.SphereGeometry(ballRadius, 32, 32);
-            const ballMaterial = new THREE.MeshStandardMaterial({ color: 0xff8800, flatShading: true });
+            const ballMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xff4400, 
+                flatShading: true,
+                emissive: 0xff4400,
+                emissiveIntensity: 0.1
+            });
             ballMesh = new THREE.Mesh(ballGeometry, ballMaterial);
             ballMesh.castShadow = true;
             scene.add(ballMesh);
 
-            // CANNON.js Body (Physics)
             const ballShape = new CANNON.Sphere(ballRadius);
             ballBody = new CANNON.Body({ mass: 1, shape: ballShape, material: new CANNON.Material('ballMat') });
             ballBody.position.copy(playerPosition).y -= 0.5;
             ballBody.linearDamping = 0.01;
             ballBody.angularDamping = 0.01;
-            ballBody.isKinematic = true; // Start in tethered (dribbling) mode
+            ballBody.isKinematic = true; 
             world.addBody(ballBody);
         }
 
         // --- GAME LOGIC ---
 
         function scorePoint() {
-            // Check player distance from the hoop center (hoopPosition.x, hoopPosition.z)
             const threePointDistanceSq = 6.75 * 6.75; 
             const playerDistanceSq = (playerPosition.x - hoopPosition.x) ** 2 + (playerPosition.z - hoopPosition.z) ** 2;
 
-            let points = 2; // Default point value
+            let points = 2; 
             if (playerDistanceSq >= threePointDistanceSq) {
                 points = 3;
             }
 
             score += points;
-            scoreDisplay.textContent = `Score: ${score} (+${points})`;
-            hasScored = true; // Prevents scoring twice on the same shot
+            scoreDisplay.textContent = `Score: ${score} / ${SCORE_GOAL} (+${points})`;
+            hasScored = true; 
 
             // Visual feedback: brief green flash for the ball
             ballMesh.material.color.set(0x00ff00); 
             
-            // Wait a moment before resetting the ball/colors
+            // Check for instant win
+            if (score >= SCORE_GOAL) {
+                gameActive = false; // Stop the timer early
+                handleGameEnd();
+                return;
+            }
+            
             setTimeout(() => {
-                ballMesh.material.color.set(0xff8800); // Back to orange
+                ballMesh.material.color.set(0xff4400); // Back to neon orange
                 resetBall();
-            }, 1000);
+            }, 500);
         }
 
         function shoot() {
             isShooting = true;
-            ballBody.isKinematic = false; // Release the ball from the player
+            ballBody.isKinematic = false; 
             
-            // Calculate shot direction (aimed slightly above hoop for arc)
             let targetVector = new THREE.Vector3(hoopPosition.x, hoopPosition.y + 1, hoopPosition.z);
             let shotDirection = targetVector.clone().sub(ballMesh.position).normalize();
 
-            // Set the ball's velocity
+            // Apply force based on calculated shootForce (influenced by playerOverall)
             ballBody.velocity.set(
                 shotDirection.x * shootForce,
                 shotDirection.y * shootForce,
                 shotDirection.z * shootForce
             );
 
-            // Simple timer to allow player to recover the ball after a shot attempt, or reset if it falls out
+            // Simple timer to allow ball recovery
             setTimeout(() => {
                 if(ballBody.position.y < -1) { 
                     resetBall();
-                } else if (isShooting && !hasScored) { // If shot is still in play and hasn't scored, allow next shot
+                } else if (isShooting && !hasScored) { 
+                    // If the shot is still in play after a few seconds, allow the player to move/shoot again
                     isShooting = false; 
                 }
             }, 3000);
@@ -429,28 +693,21 @@
 
         function resetBall() {
             isShooting = false;
-            hasScored = false; // Reset the scoring flag
+            hasScored = false; 
             ballBody.isKinematic = true;
             ballBody.velocity.set(0, 0, 0);
             ballBody.angularVelocity.set(0, 0, 0);
-            ballBody.position.copy(playerPosition).y -= 0.5; // Snap back to player's feet
+            ballBody.position.copy(playerPosition).y -= 0.5; 
         }
 
         // --- INPUT & CAMERA HANDLING (Unchanged) ---
         function onKeyDown(event) {
+            if (!gameActive) return; // Ignore input if game is over
             switch (event.keyCode) {
-                case 87: // W
-                    moveForward = true;
-                    break;
-                case 83: // S
-                    moveBackward = true;
-                    break;
-                case 65: // A
-                    moveLeft = true;
-                    break;
-                case 68: // D
-                    moveRight = true;
-                    break;
+                case 87: moveForward = true; break; // W
+                case 83: moveBackward = true; break; // S
+                case 65: moveLeft = true; break;    // A
+                case 68: moveRight = true; break;   // D
                 case 69: // E (SHOOT)
                     if (!isShooting) {
                         shoot();
@@ -461,18 +718,10 @@
 
         function onKeyUp(event) {
             switch (event.keyCode) {
-                case 87: // W
-                    moveForward = false;
-                    break;
-                case 83: // S
-                    moveBackward = false;
-                    break;
-                case 65: // A
-                    moveLeft = false;
-                    break;
-                case 68: // D
-                    moveRight = false;
-                    break;
+                case 87: moveForward = false; break; // W
+                case 83: moveBackward = false; break; // S
+                case 65: moveLeft = false; break;    // A
+                case 68: moveRight = false; break;   // D
             }
         }
 
@@ -490,9 +739,14 @@
             requestAnimationFrame(animate);
 
             // 1. Physics Step
-            world.step(1/60); 
+            if (gameActive) {
+                world.step(1/60); 
+            } else {
+                // Keep physics running to let the ball fall after the game ends
+                world.step(1/60); 
+            }
 
-            // 2. Player Movement (Updating the core playerPosition)
+            // 2. Player Movement 
             playerVelocity.set(0, 0, 0);
 
             if (moveForward) playerVelocity.z -= speed;
@@ -500,48 +754,39 @@
             if (moveLeft) playerVelocity.x -= speed;
             if (moveRight) playerVelocity.x += speed;
 
-            // Apply movement based on player velocity
-            // We use THREE's camera methods to move the player in the direction the camera is looking (even if it's 3rd person)
             camera.translateX(playerVelocity.x);
             camera.translateZ(playerVelocity.z);
 
-            // Clamp the player position to the court bounds (optional safety)
             camera.position.x = Math.max(-14, Math.min(14, camera.position.x));
             camera.position.z = Math.max(-28, Math.min(28, camera.position.z));
             
-            // Sync playerPosition (the 1st person viewpoint)
             playerPosition.copy(camera.position);
 
 
-            // 3. Camera Position Update (based on view mode)
+            // 3. Camera Position Update 
             if (isFirstPerson) {
-                // Lock camera to the player's head height and look at the hoop
                 camera.position.y = playerHeight;
                 camera.lookAt(hoopPosition);
             } else {
-                // Third Person: Camera is behind and above the player, looking slightly down
-                const cameraOffset = new THREE.Vector3(0, 3, -5); // 5 units BACK from the player, 3 units UP
+                const cameraOffset = new THREE.Vector3(0, 3, -5); 
                 
-                // Calculate position behind the player's current view (using the negative Z component for offset)
                 let tempPos = new THREE.Vector3().copy(playerPosition);
-                tempPos.z += cameraOffset.z; // Move camera 5 units behind the player 
+                tempPos.z += cameraOffset.z; 
                 tempPos.y += cameraOffset.y; 
 
                 camera.position.copy(tempPos);
-                camera.lookAt(playerPosition); // Look at the player's center
+                camera.lookAt(playerPosition); 
             }
             
-            // 4. Ball Tethering (Dribbling)
+            // 4. Ball Tethering 
             if (!isShooting) {
                 let offsetVector = new THREE.Vector3(0, 0, 0);
-                // Adjust for side dribbling (A/D)
                 if (moveLeft) offsetVector.x -= dribbleOffset; 
                 if (moveRight) offsetVector.x += dribbleOffset; 
 
-                // Ball position is locked to the player's position + the offset
                 ballBody.position.set(
                     playerPosition.x + offsetVector.x,
-                    playerPosition.y - 0.5 + Math.sin(Date.now() / 150) * 0.1, // Visual bounce effect
+                    playerPosition.y - 0.5 + Math.sin(Date.now() / 150) * 0.1, 
                     playerPosition.z + offsetVector.z
                 );
                 ballBody.quaternion.copy(camera.quaternion);
@@ -549,7 +794,6 @@
             
             // 5. Pick Up Ball Logic
             if (!isShooting && ballBody.position.y < 0.1) {
-                // If ball is on the ground, allow player to "pick up" by running close
                 let dist = playerPosition.distanceTo(ballMesh.position);
                 if (dist < 1.0) {
                     resetBall();
