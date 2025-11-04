@@ -3,213 +3,341 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The G.O.A.T. Project</title>
-    <!-- Link to the separate CSS file -->
-    <link rel="stylesheet" href="style.css">
-    <!-- Font for theme -->
-    <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;700&display=swap" rel="stylesheet">
-</head>
-<body>
-
-    <!-- 1. MAIN MENU SCREEN (Always visible as the container, controls position of menu bar) -->
-    <div id="main-menu-container">
-        <h1 class="main-title">THE G.O.A.T. PROJECT</h1>
-        
-        <!-- Menu Bar at the bottom -->
-        <div class="menu-bar">
-            <!-- Quick Play Button added per original request -->
-            <button class="menu-button" onclick="quickPlay()">Quick Play</button>
-            <button class="menu-button" onclick="loadMissions()">Missions</button>
-            <button class="menu-button" onclick="loadMyHub()">My Hub</button>
-            <button class="menu-button" onclick="loadMyStats()">My Stats</button>
-            <button class="menu-button" onclick="loadOptions()">Options</button>
-            <button class="menu-button" onclick="quitGame()">Quit</button>
-        </div>
-    </div>
-
-    <!-- 2. MISSIONS SCREEN (Initially Hidden) -->
-    <div id="missions-screen" class="missions-log-container" style="display: none;">
-        <h2>MISSIONS</h2>
-        <div id="mission-list">
-            <!-- Buttons dynamically updated by loadMissions() -->
-            <button id="mission-1-button" class="mission-item" onclick="startMission(1)">1. The Jump Start (IN PROGRESS)</button>
-            <button id="mission-2-button" class="mission-item" onclick="startMission(2)">2. The Rookie Contract (LOCKED)</button>
-            <!-- Back Button -->
-            <button class="menu-button" onclick="showMainMenu()">Back to Menu</button>
-        </div>
-    </div>
-
-    <!-- 3. MY HUB SCREEN (Initially Hidden) -->
-    <div id="my-hub-screen" class="my-player-container" style="display: none;">
-        <h2>MY HUB</h2>
-        <p>This is your personal training and management center.</p>
-        <!-- Hub Links -->
-        <button class="menu-button" onclick="loadTraining()">Training Facility</button>
-        <button class="menu-button" onclick="loadMyStats()">View Stats</button>
-        <!-- Back Button -->
-        <button class="menu-button" onclick="showMainMenu()">Back to Menu</button>
-    </div>
-
-    <!-- 4. MY STATS SCREEN (Initially Hidden) -->
-    <div id="my-stats-screen" class="my-player-container" style="display: none;">
-        <h2>PLAYER STATS</h2>
-        <p><strong>Player ID:</strong> <span id="player-id-display">Loading...</span></p>
-        <p><strong>Overall Rating:</strong> 75</p>
-        <p><strong>Mission Status:</strong> Active</p>
-        <p><strong>Current Mission:</strong> The Jump Start</p>
-        
-        <h3>Career Progress</h3>
-        <div class="progress-bar-container">
-            <div id="mission-progress-bar" class="progress-bar" style="width: 0%;"></div>
-        </div>
-        <!-- Back Button -->
-        <button class="menu-button" onclick="loadMyHub()">Back to Hub</button>
-    </div>
-
-    <!-- 5. OPTIONS SCREEN (Initially Hidden) -->
-    <div id="options-screen" class="options-container" style="display: none;">
-        <h2>OPTIONS</h2>
-        <!-- Save/Load/Reset Buttons - Now use Firestore -->
-        <button class="menu-button" onclick="saveGame()">SAVE GAME (Cloud)</button>
-        <button class="menu-button" onclick="loadGame()">LOAD GAME (Cloud)</button>
-        <button class="menu-button" onclick="confirmResetGame()">RESET ALL PROGRESS (Cloud)</button>
-        <!-- Back Button -->
-        <button class="menu-button" onclick="showMainMenu()">Back to Menu</button>
-    </div>
-
-    <!-- 6. QUIT SCREEN (Initially Hidden) -->
-    <div id="quit-screen" class="quit-container" style="display: none;">
-        <h2>QUIT GAME</h2>
-        <p>Are you sure you want to quit the G.O.A.T. Project?</p>
-        <!-- Confirmation Buttons -->
-        <button class="menu-button" onclick="showMainMenu()">No, Go Back</button>
-        <button class="menu-button" onclick="showCustomModal('Game Quit', 'Thank you for playing! Your game state has been saved to the cloud.', [{text: 'OK', action: hideCustomModal}])">Yes, Quit</button>
-    </div>
-    
-    <!-- 7. MISSION 1: THE JUMP START (Gameplay Screen) -->
-    <div id="mission-1-screen" class="mission-screen" style="display: none;">
-        <h2>MISSION 1: The Jump Start</h2>
-        <p>Timing Drill: Hit the "Shoot" button when the meter is between **90 and 100** for a perfect pass!</p>
-
-        <div class="mission-content">
-            <div id="meter-display">0</div>
-            <button class="skill-button" onclick="stopMeter()">SHOOT / PASS</button>
-        </div>
-
-        <div id="mission-feedback"></div>
-        <button class="menu-button" onclick="showMainMenu()">Back to Menu</button>
-    </div>
-
-    <!-- 8. MISSION 2: THE ROOKIE CONTRACT (Gameplay Screen) -->
-    <div id="mission-2-screen" class="mission-screen" style="display: none;">
-        <h2>MISSION 2: The Rookie Contract</h2>
-        <p>You've received two contract offers. Choose wisely—your long-term potential depends on this decision!</p>
-        
-        <div class="mission-content">
-            <!-- Contract Choice 1 -->
-            <button class="menu-button contract-button" onclick="completeMission2(1)">
-                Contract A: High Incentives (+5 Overall Potential)
-            </button>
-            <!-- Contract Choice 2 -->
-            <button class="menu-button contract-button" onclick="completeMission2(2)">
-                Contract B: Large Upfront Bonus (+1 Overall Potential)
-            </button>
-        </div>
-        <!-- Back Button -->
-        <button class="menu-button" onclick="showMainMenu()">Back to Menu</button>
-    </div>
-
-    <!-- 9. Custom Modal for Confirmation/Alerts (Replaces alert() and confirm()) -->
-    <div id="custom-modal" style="display: none;" class="modal-backdrop">
-        <div class="modal-content">
-            <h3 id="modal-title"></h3>
-            <p id="modal-message"></p>
-            <div id="modal-actions" class="flex justify-center space-x-4 mt-6">
-                <!-- Buttons will be injected here -->
-            </div>
-        </div>
-    </div>
-
-    <!-- FIREBASE AND SCRIPT IMPORTS -->
-    <script type="module">
-        // Mandatory global variables provided by the environment
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
-        // Firebase SDK Imports
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot, updateDoc, deleteDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
-        // Expose Firebase components and context variables globally for script.js
-        window.initializeApp = initializeApp;
-        window.getAuth = getAuth;
-        window.signInAnonymously = signInAnonymously;
-        window.signInWithCustomToken = signInWithCustomToken;
-        window.onAuthStateChanged = onAuthStateChanged;
-        window.getFirestore = getFirestore;
-        window.doc = doc;
-        window.setDoc = setDoc;
-        window.onSnapshot = onSnapshot;
-        window.updateDoc = updateDoc;
-        window.deleteDoc = deleteDoc;
-        window.setLogLevel = setLogLevel;
-
-        // Expose context variables
-        window.globalAppId = appId;
-        window.globalFirebaseConfig = firebaseConfig;
-        window.globalInitialAuthToken = initialAuthToken;
-    </script>
-    <!-- Load the main game logic script -->
-    <script type="module" src="script.js"></script>
-
-    <!-- Modal CSS (Inline to ensure immediate availability for alerts) -->
+    <title>3D Basketball Hoopz</title>
     <style>
-        .modal-backdrop {
-            position: fixed;
+        body { margin: 0; overflow: hidden; background-color: #0d0d0d; font-family: 'Arial', sans-serif; }
+        canvas { display: block; }
+        #overlay {
+            position: absolute;
             top: 0;
             left: 0;
             width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.85);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-        .modal-content {
-            background: rgba(10, 10, 30, 0.95);
+            padding: 15px;
             color: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 0 40px rgba(255, 0, 255, 0.5);
-            width: 90%;
-            max-width: 400px;
+            background: rgba(0, 0, 0, 0.7);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            border-bottom-left-radius: 8px;
+            border-bottom-right-radius: 8px;
             text-align: center;
-            border: 2px solid #ff00ff;
+            z-index: 10;
         }
-        .modal-content h3 {
-            color: #00c4ff;
-            font-size: 1.5em;
-            margin-bottom: 15px;
+        #controls {
+            margin-top: 10px;
+            font-size: 1.1em;
+            color: #4CAF50; /* Green highlight for controls */
         }
-        .modal-content button {
-            background-color: #ff00ff;
-            color: #1a1a2e;
-            border: none;
-            padding: 10px 20px;
-            cursor: pointer;
-            font-size: 1em;
-            border-radius: 5px;
-            transition: all 0.2s ease;
-            font-weight: bold;
+        .control-key {
+            background: #222;
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin: 0 4px;
+            border: 1px solid #333;
         }
-        .modal-content button:hover {
-            background-color: #00c4ff;
-            box-shadow: 0 0 10px rgba(0, 196, 255, 0.5);
-        }
-        
     </style>
+    <!-- Three.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Cannon.js Physics Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+</head>
+<body>
+    <div id="overlay">
+        <h1>Quick Play Mode</h1>
+        <p>Use the controls below to dribble and shoot!</p>
+        <div id="controls">
+            Move: <span class="control-key">W</span> (Forward) <span class="control-key">A</span> (Left Dribble) <span class="control-key">S</span> (Backward) <span class="control-key">D</span> (Right Dribble)<br>
+            Shoot: <span class="control-key">E</span>
+        </div>
+    </div>
+
+    <script>
+        // --- SCENE SETUP (THREE.JS) ---
+        let scene, camera, renderer;
+        let world; // Cannon.js world
+        let ballMesh, ballBody;
+        let playerVelocity = new THREE.Vector3();
+        let isShooting = false;
+        let hoopPosition = new THREE.Vector3(0, 3, -15);
+        let shootForce = 15; // The power of the E key shot
+
+        // Player/Camera controls
+        let moveForward = false;
+        let moveBackward = false;
+        let moveLeft = false;
+        let moveRight = false;
+
+        // Player movement speed
+        const speed = 0.15;
+        const dribbleOffset = 0.8;
+        const playerHeight = 1.8;
+        const ballRadius = 0.25;
+
+        // --- INITIALIZATION ---
+        function init() {
+            // 1. Scene and Renderer
+            scene = new THREE.Scene();
+            scene.fog = new THREE.Fog(0x111111, 0, 40);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
+
+            // 2. Camera Setup (The Player)
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, playerHeight, 5); // Start on the court
+            camera.lookAt(hoopPosition);
+
+            // 3. Lighting
+            const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambient);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            directionalLight.position.set(10, 15, 10);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            scene.add(directionalLight);
+
+            // 4. Physics World (CANNON.JS)
+            world = new CANNON.World();
+            world.gravity.set(0, -9.82, 0);
+            world.broadphase = new CANNON.NaiveBroadphase();
+
+            // 5. Create Court and Hoop
+            createCourt();
+            createHoop();
+            
+            // 6. Create Basketball
+            createBall();
+
+            // 7. Event Listeners
+            document.addEventListener('keydown', onKeyDown, false);
+            document.addEventListener('keyup', onKeyUp, false);
+
+            animate();
+        }
+
+        // --- OBJECT CREATION ---
+
+        function createCourt() {
+            // THREE.js Mesh (Visual)
+            const courtGeometry = new THREE.PlaneGeometry(30, 60);
+            const courtMaterial = new THREE.MeshStandardMaterial({ color: 0xcc8855, side: THREE.DoubleSide });
+            const courtMesh = new THREE.Mesh(courtGeometry, courtMaterial);
+            courtMesh.rotation.x = Math.PI / 2;
+            courtMesh.receiveShadow = true;
+            scene.add(courtMesh);
+
+            // CANNON.js Body (Physics)
+            const courtShape = new CANNON.Plane();
+            const courtBody = new CANNON.Body({ mass: 0 }); // mass = 0 makes it static
+            courtBody.addShape(courtShape);
+            courtBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2); // Rotate to be flat
+            world.addBody(courtBody);
+        }
+
+        function createHoop() {
+            // Backboard (Visual)
+            const backboardGeo = new THREE.BoxGeometry(2, 1.5, 0.1);
+            const backboardMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee });
+            const backboardMesh = new THREE.Mesh(backboardGeo, backboardMat);
+            backboardMesh.position.set(hoopPosition.x, hoopPosition.y + 0.5, hoopPosition.z);
+            backboardMesh.castShadow = true;
+            scene.add(backboardMesh);
+
+            // Pole (Visual)
+            const poleGeo = new THREE.CylinderGeometry(0.1, 0.1, 5, 12);
+            const poleMat = new THREE.MeshStandardMaterial({ color: 0x444444 });
+            const poleMesh = new THREE.Mesh(poleGeo, poleMat);
+            poleMesh.position.set(hoopPosition.x, hoopPosition.y - 2.5 + 0.5, hoopPosition.z + 0.5);
+            poleMesh.castShadow = true;
+            scene.add(poleMesh);
+
+            // Rim (Visual - simplified torus)
+            const rimGeo = new THREE.TorusGeometry(0.4, 0.05, 8, 32);
+            const rimMat = new THREE.MeshStandardMaterial({ color: 0xff4400 });
+            const rimMesh = new THREE.Mesh(rimGeo, rimMat);
+            rimMesh.rotation.x = Math.PI / 2;
+            rimMesh.position.set(hoopPosition.x, hoopPosition.y, hoopPosition.z + 0.15);
+            rimMesh.castShadow = true;
+            scene.add(rimMesh);
+
+            // Rim (Physics - Cannon.js)
+            // Use a few small boxes/cylinders for a simplified rim collider to allow shooting through
+            const rimShape = new CANNON.Cylinder(0.4, 0.4, 0.1, 16);
+            const rimBody = new CANNON.Body({ mass: 0, material: new CANNON.Material('rimMat') });
+            rimBody.addShape(rimShape);
+            rimBody.position.set(hoopPosition.x, hoopPosition.y, hoopPosition.z + 0.15);
+            world.addBody(rimBody);
+        }
+
+        function createBall() {
+            // THREE.js Mesh (Visual)
+            const ballGeometry = new THREE.SphereGeometry(ballRadius, 32, 32);
+            const ballMaterial = new THREE.MeshStandardMaterial({ color: 0xff8800, flatShading: true });
+            ballMesh = new THREE.Mesh(ballGeometry, ballMaterial);
+            ballMesh.castShadow = true;
+            scene.add(ballMesh);
+
+            // CANNON.js Body (Physics)
+            const ballShape = new CANNON.Sphere(ballRadius);
+            ballBody = new CANNON.Body({ mass: 1, shape: ballShape, material: new CANNON.Material('ballMat') });
+            ballBody.position.set(camera.position.x, camera.position.y - 0.5, camera.position.z);
+            ballBody.linearDamping = 0.01;
+            ballBody.angularDamping = 0.01;
+            ballBody.isKinematic = true; // Start in tethered (dribbling) mode
+            world.addBody(ballBody);
+        }
+
+        // --- INPUT HANDLING ---
+
+        function onKeyDown(event) {
+            switch (event.keyCode) {
+                case 87: // W
+                    moveForward = true;
+                    break;
+                case 83: // S
+                    moveBackward = true;
+                    break;
+                case 65: // A
+                    moveLeft = true;
+                    break;
+                case 68: // D
+                    moveRight = true;
+                    break;
+                case 69: // E (SHOOT)
+                    if (!isShooting) {
+                        shoot();
+                    }
+                    break;
+            }
+        }
+
+        function onKeyUp(event) {
+            switch (event.keyCode) {
+                case 87: // W
+                    moveForward = false;
+                    break;
+                case 83: // S
+                    moveBackward = false;
+                    break;
+                case 65: // A
+                    moveLeft = false;
+                    break;
+                case 68: // D
+                    moveRight = false;
+                    break;
+            }
+        }
+
+        // --- GAME LOGIC ---
+
+        function shoot() {
+            isShooting = true;
+            ballBody.isKinematic = false; // Release the ball from the player
+            
+            // Calculate direction vector from ball to hoop
+            let targetVector = new THREE.Vector3(hoopPosition.x, hoopPosition.y, hoopPosition.z);
+            let shotDirection = targetVector.clone().sub(ballMesh.position).normalize();
+
+            // Apply an upward boost for arc
+            shotDirection.y += 1.0; 
+            shotDirection.normalize();
+
+            // Set the ball's velocity
+            ballBody.velocity.set(
+                shotDirection.x * shootForce,
+                shotDirection.y * shootForce,
+                shotDirection.z * shootForce
+            );
+
+            // After a few seconds, if the ball hasn't been picked up, allow it to be picked up
+            setTimeout(() => {
+                if(ballBody.position.y < -1) { // If it fell off the court, reset
+                    resetBall();
+                } else if (isShooting) {
+                    // Simple check: if the ball hits the ground, reset the shooting state 
+                    // and let the player 'run over' it to pick it up (done in update loop)
+                    isShooting = false; 
+                }
+            }, 5000);
+        }
+
+        function resetBall() {
+            isShooting = false;
+            ballBody.isKinematic = true;
+            ballBody.velocity.set(0, 0, 0);
+            ballBody.angularVelocity.set(0, 0, 0);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // 1. Physics Step
+            world.step(1/60); // Update physics 60 times per second
+
+            // 2. Player Movement
+            let currentSpeed = speed;
+
+            // Reset player velocity for smooth movement
+            playerVelocity.set(0, 0, 0);
+
+            let offsetVector = new THREE.Vector3(0, 0, 0); // Dribble offset vector
+
+            if (moveForward) playerVelocity.z -= currentSpeed;
+            if (moveBackward) playerVelocity.z += currentSpeed;
+            if (moveLeft) {
+                playerVelocity.x -= currentSpeed;
+                offsetVector.x -= dribbleOffset; // Left Dribble offset
+            }
+            if (moveRight) {
+                playerVelocity.x += currentSpeed;
+                offsetVector.x += dribbleOffset; // Right Dribble offset
+            }
+
+            // Apply movement to the camera
+            camera.translateX(playerVelocity.x);
+            camera.translateZ(playerVelocity.z);
+
+            // 3. Ball Tethering (Dribbling)
+            if (!isShooting) {
+                // Ball position is locked to the player's position + the offset vector
+                ballBody.position.set(
+                    camera.position.x + offsetVector.x,
+                    camera.position.y - 0.5 + Math.sin(Date.now() / 150) * 0.1, // Visual bounce effect
+                    camera.position.z + offsetVector.z
+                );
+                ballBody.quaternion.copy(camera.quaternion); // Keep ball oriented with player
+            } 
+            
+            // 4. Reset Ball Logic (if the ball is shot and comes to rest)
+            if (isShooting && ballBody.position.y < 0.1 && ballBody.position.y > -1) {
+                // If ball is on the ground, allow player to "pick up" by running close
+                let dist = camera.position.distanceTo(ballMesh.position);
+                if (dist < 1.0) {
+                    resetBall();
+                }
+            }
+
+
+            // 5. Sync Three.js Mesh with Cannon.js Body
+            ballMesh.position.copy(ballBody.position);
+            ballMesh.quaternion.copy(ballBody.quaternion);
+
+
+            // 6. Render the scene
+            renderer.render(scene, camera);
+        }
+
+        window.onload = function () {
+            init();
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
 </body>
 </html>
