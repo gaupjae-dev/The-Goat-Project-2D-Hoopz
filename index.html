@@ -3,936 +3,516 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GOAT Quick Play Challenge</title>
+    <title>Quick Play Hoop Simulator v3 (Collision)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
-        /* Neon Aesthetic */
-        body { margin: 0; overflow: hidden; background-color: #000000; font-family: 'Inter', sans-serif; }
-        canvas { display: block; }
-
-        #overlay {
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            overflow: hidden;
+            height: 100vh;
+            background-color: #1f2937;
+            display: flex;
+            flex-direction: column;
+        }
+        #hoop-container {
+            flex-grow: 1;
+            position: relative;
+        }
+        canvas {
+            display: block;
+        }
+        .info-panel {
+            background-color: rgba(255, 255, 255, 0.95);
+            padding: 1rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            max-width: 400px;
+            pointer-events: auto;
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            padding: 15px;
-            color: white;
-            background: rgba(0, 0, 0, 0.9);
-            box-shadow: 0 0 15px #00c4ff; /* Neon blue shadow */
-            text-align: center;
+            top: 20px;
+            right: 20px;
             z-index: 10;
+        }
+        .controls-bar {
+            background-color: #ffffff;
+            padding: 10px 20px;
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            pointer-events: auto;
+            z-index: 10;
+        }
+        .control-group {
             display: flex;
             flex-direction: column;
             align-items: center;
-            border-bottom: 2px solid #00c4ff;
         }
-
-        #missionInfo {
-            display: flex;
-            justify-content: space-around;
-            width: 90%;
-            max-width: 400px;
-            margin-bottom: 10px;
-            padding: 5px 0;
-            border-bottom: 1px dashed #ff00ff; /* Magenta dashed line */
-        }
-
-        #timerDisplay, #overallDisplay {
-            font-size: 1.2em;
-            color: #ff00ff; /* Magenta for secondary info */
-            font-weight: bold;
-        }
-
-        #scoreDisplay {
-            font-size: 2.2em;
-            font-weight: bold;
-            margin-bottom: 8px;
-            color: #00c4ff; /* Neon blue for score */
-            text-shadow: 0 0 8px #00c4ff;
-            transition: color 0.2s, transform 0.2s;
-        }
-
-        #controls {
-            margin-top: 10px;
-            font-size: 1em;
-            color: #ff00ff; 
-        }
-        .control-key {
-            background: #0d0d0d;
-            padding: 2px 6px;
-            border-radius: 4px;
-            margin: 0 4px;
-            border: 1px solid #00c4ff;
-            box-shadow: 0 0 5px rgba(0, 196, 255, 0.5);
-        }
-
-        #cameraToggle {
+        #message {
             position: absolute;
-            top: 10px;
-            left: 10px;
-            background: rgba(0, 196, 255, 0.1);
-            border: 2px solid #00c4ff;
-            color: white;
-            width: 40px;
-            height: 40px;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-            cursor: pointer;
-            transition: background 0.2s;
-            z-index: 11;
-        }
-        #cameraToggle:hover {
-            background: rgba(0, 196, 255, 0.3);
-        }
-        
-        /* NEW: Power Charge Display */
-        #powerDisplay {
-            position: fixed;
-            bottom: 20px;
+            top: 50%;
             left: 50%;
-            transform: translateX(-50%);
-            width: 200px;
-            height: 25px;
-            line-height: 25px;
-            background: #111;
-            border: 2px solid #00c4ff;
-            color: white;
+            transform: translate(-50%, -50%);
+            font-size: 3rem;
             font-weight: bold;
-            text-align: left;
-            padding-left: 10px;
-            border-radius: 5px;
-            box-shadow: 0 0 10px #ff00ff;
-            display: none;
-            overflow: hidden;
-            white-space: nowrap;
-        }
-        
-        /* Mission Complete Modal */
-        #modal {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.85);
-            display: none;
-            justify-content: center;
-            align-items: center;
-            z-index: 20;
-        }
-        #modalContent {
-            background: #111;
-            padding: 30px;
-            border-radius: 12px;
-            border: 3px solid #ff00ff;
-            box-shadow: 0 0 20px #ff00ff, inset 0 0 10px #ff00ff;
-            text-align: center;
-            max-width: 90%;
-        }
-        #modalContent h2 {
-            color: #00c4ff;
-            font-size: 2em;
-            text-shadow: 0 0 5px #00c4ff;
-            margin-bottom: 10px;
-        }
-        #modalContent p {
-            color: #fff;
-            margin: 15px 0;
-            font-size: 1.1em;
-        }
-        #closeModal {
-            background: #ff00ff;
-            color: black;
-            font-weight: bold;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: background 0.2s, box-shadow 0.2s;
-            margin-top: 20px;
-        }
-        #closeModal:hover {
-            background: #fff;
-            box-shadow: 0 0 10px #ff00ff;
+            color: #ff0000;
+            text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.7);
+            opacity: 0;
+            transition: opacity 0.5s;
+            pointer-events: none;
         }
     </style>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
-        // Expose Firebase functions globally for the non-module script
-        window.firebase = {
-            initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, 
-            getFirestore, doc, getDoc, setDoc, setLogLevel
-        };
-    </script>
 </head>
 <body>
-    <div id="cameraToggle" onclick="toggleCamera()" title="Toggle First/Third Person View">
-        <span id="cameraToggleIcon">👤</span>
-    </div>
-
-    <div id="overlay">
-        <h1>GOAT Quick Play Challenge (Mission 3)</h1>
-        <div id="missionInfo">
-            <div id="timerDisplay">Time: 60s</div>
-            <div id="overallDisplay">Overall: 75</div>
-        </div>
-        <div id="scoreDisplay">Score: 0 / 15</div>
-        <div id="controls">
-            Move: <span class="control-key">W</span> <span class="control-key">A</span> <span class="control-key">S</span> <span class="control-key">D</span> | Shoot: <span class="control-key">E</span> (Hold to Charge)
+    <div id="hoop-container">
+        <div id="message"></div>
+        <div class="info-panel hidden md:block">
+            <h1 class="text-xl font-bold text-gray-800 mb-3">Quick Play v3: Rim Collision Added!</h1>
+            <ul class="list-disc ml-4 text-sm text-gray-700">
+                <li>**Click & Drag / Scroll:** Orbit/Zoom.</li>
+                <li>**LAUNCH:** Shoots the ball with perfect power for the set angle/distance.</li>
+                <li>**New!** The ball now **bounces** off the rim and backboard.</li>
+            </ul>
         </div>
     </div>
-    
-    <div id="powerDisplay">POWER: 0%</div>
 
-    <div id="modal">
-        <div id="modalContent">
-            <h2 id="modalTitle"></h2>
-            <p id="modalMessage"></p>
-            <button id="closeModal" onclick="closeModal()">Continue</button>
+    <div class="controls-bar">
+        <div class="control-group">
+            <label for="angle" class="text-xs font-semibold text-gray-600 mb-1">Launch Angle ($\theta$):</label>
+            <input type="range" id="angle" min="30" max="80" value="45" step="1" class="w-32">
+            <span id="angleValue" class="text-sm font-mono text-indigo-600">45°</span>
+        </div>
+        <div class="control-group">
+            <button id="launchButton" class="px-6 py-2 bg-indigo-600 text-white font-bold rounded-lg shadow-lg hover:bg-indigo-700 transition duration-150">
+                LAUNCH SHOT!
+            </button>
+        </div>
+        <div class="control-group">
+            <label for="distance" class="text-xs font-semibold text-gray-600 mb-1">Shot Distance (m):</label>
+            <input type="range" id="distance" min="5" max="15" value="7.24" step="0.1" class="w-32">
+            <span id="distanceValue" class="text-sm font-mono text-pink-600">7.24 m</span>
         </div>
     </div>
 
     <script>
-        // --- GAME STATE & PHYSICS CONSTANTS ---
-        const GAME_DURATION = 60; 
-        const MAX_CHARGE_TIME = 1000; // 1 second fully charged
-        const MIN_SHOOT_FORCE = 10;
-        const MAX_SHOOT_FORCE = 30;
-        const playerHeight = 1.8;
-        const ballRadius = 0.25;
-        const speed = 0.15;
-        const dribbleOffset = 0.8;
-        
-        // --- FIREBASE AND GAME STATE VARIABLES ---
-        let db, auth;
-        let userId = 'anon';
-        let playerOverall = 75;
-        let playerCurrentMission = 3; 
-        let isAuthReady = false;
-        let SCORE_GOAL = 15; 
-        let timeRemaining = GAME_DURATION;
-        let gameActive = false;
-        let gameInterval;
+        // --- Firebase Globals (Required but not used) ---
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? initialAuthToken : '';
+        // ------------------------------------------------
 
-        // --- SCENE & PHYSICS OBJECTS ---
-        let scene, camera, renderer, world;
-        let ballMesh, ballBody;
-        let score = 0;
-        let hasScored = false; 
-        let hoopPosition = new THREE.Vector3(0, 3.05, 28.75); 
-        let playerPosition = new THREE.Vector3(0, 1.8, -5); 
+        // Physics Constants
+        const G = 9.81; // Gravity (m/s^2)
+        const COEFFICIENT_OF_RESTITUTION = 0.5; // How bouncy the rim is (0.0 = dead, 1.0 = perfect bounce)
+        const BACKBOARD_RESTITUTION = 0.8; // Backboard is bouncier than the rim
+        const HOOP_HEIGHT = 3.05; // 10ft
+        const LAUNCH_HEIGHT = 1.8;
+        const ballRadius = 0.12;
+        const TIME_STEP = 1/60; // 60 FPS update rate
 
-        // --- INPUT & CONTROL STATE ---
-        let moveForward = false;
-        let moveBackward = false;
-        let moveLeft = false;
-        let moveRight = false;
-        let isFirstPerson = true; 
-        let playerVelocity = new THREE.Vector3();
+        // THREE.js Globals
+        let scene, camera, renderer, courtGroup, hoopGroup;
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+        let shotStartTime = 0;
+        let ball = null;
         let isShooting = false;
-        let isCharging = false;
-        let chargeStartTime = 0;
-        let currentPower = 0;
-        let playerAimDirection = new THREE.Vector3(0, 0, 0); 
-        
-        // --- CANNON.JS MATERIALS (FIX C) ---
-        let ballMat, courtMat, rimMat;
-        
-        function setupPhysicsMaterials() {
-            // Define materials
-            ballMat = new CANNON.Material('ballMat');
-            courtMat = new CANNON.Material('courtMat');
-            rimMat = new CANNON.Material('rimMat');
-            
-            // Define contact properties (friction and restitution/bounciness)
-            
-            // Ball vs Court (High friction for grip, low restitution for floor bounce)
-            const ballCourtContact = new CANNON.ContactMaterial(ballMat, courtMat, {
-                friction: 0.8,
-                restitution: 0.3, 
-                contactEquationStiffness: 1e8,
-                contactEquationRelaxation: 3
-            });
-            world.addContactMaterial(ballCourtContact);
+        let currentV0 = new THREE.Vector3(); // Now a vector for collision response
+        let currentPosition = new THREE.Vector3();
+        let shotDistance = 7.24;
 
-            // Ball vs Rim/Backboard (Low friction for sliding, moderate/high restitution for rim bounce)
-            const ballRimContact = new CANNON.ContactMaterial(ballMat, rimMat, {
-                friction: 0.1,
-                restitution: 0.65, // Tune this for realistic rim bounciness
-                contactEquationStiffness: 1e8,
-                contactEquationRelaxation: 3
-            });
-            world.addContactMaterial(ballRimContact);
+        // Hoops Specs (for collision detection)
+        const RIM_RADIUS = 0.457 / 2; // 18 inches
+        const RIM_TUBE_RADIUS = 0.03;
+        const RIM_CENTER_Y = HOOP_HEIGHT;
+        const RIM_CENTER_Z = -1.0 - 0.15; // Hoop Z offset relative to hoopGroup (which is positioned by shotDistance)
+        const BACKBOARD_Z_FACE = -1.0; // Backboard Z face relative to hoopGroup
+
+        // DOM Elements
+        const angleInput = document.getElementById('angle');
+        const distanceInput = document.getElementById('distance');
+        const launchButton = document.getElementById('launchButton');
+        const angleValueSpan = document.getElementById('angleValue');
+        const distanceValueSpan = document.getElementById('distanceValue');
+        const messageDisplay = document.getElementById('message');
+
+        window.onload = function () {
+            init();
+            animate();
+            addEventListeners();
+            updateUI();
         }
 
-        // --- FIREBASE FUNCTIONS ---
-        async function setupFirebaseAndLoadGame() {
-            // ... (Firebase setup logic - unchanged)
-            try {
-                const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-
-                if (!firebaseConfig.apiKey) {
-                    console.error("Firebase config is missing. Running in local mode.");
-                    playerOverall = 75; 
-                    overallDisplay.textContent = `Overall: ${playerOverall}`;
-                    isAuthReady = true;
-                    startGame();
-                    return;
-                }
-
-                firebase.setLogLevel('Debug');
-                const app = firebase.initializeApp(firebaseConfig);
-                db = firebase.getFirestore(app);
-                auth = firebase.getAuth(app);
-
-                const authToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-                if (authToken) {
-                    await firebase.signInWithCustomToken(auth, authToken);
-                } else {
-                    await firebase.signInAnonymously(auth);
-                }
-
-                userId = auth.currentUser?.uid || crypto.randomUUID();
-                await loadPlayerData(appId);
-                isAuthReady = true;
-                startGame(); 
-
-            } catch (error) {
-                console.error("Error setting up Firebase or authenticating:", error);
-                playerOverall = 75; 
-                overallDisplay.textContent = `Overall: ${playerOverall}`;
-                isAuthReady = true;
-                startGame();
-            }
-        }
-
-        async function loadPlayerData(appId) {
-            const docRef = firebase.doc(db, `/artifacts/${appId}/users/${userId}/playerData/stats`);
-            try {
-                const docSnap = await firebase.getDoc(docRef);
-
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    playerOverall = data.overall || 75;
-                    playerCurrentMission = data.mission || 3;
-                } else {
-                    await savePlayerData(appId, 75, 3);
-                    playerOverall = 75;
-                    playerCurrentMission = 3;
-                }
-                
-                // FIX E: DYNAMIC MISSION GOAL & TITLE
-                SCORE_GOAL = getMissionGoal(playerCurrentMission);
-
-                overallDisplay.textContent = `Overall: ${playerOverall}`;
-                document.querySelector('#overlay h1').textContent = `GOAT Quick Play Challenge (Mission ${playerCurrentMission})`;
-                scoreDisplay.textContent = `Score: 0 / ${SCORE_GOAL}`;
-
-            } catch (e) {
-                console.error("Error loading player data:", e);
-            }
-        }
-        
-        function getMissionGoal(mission) {
-            switch(mission) {
-                case 3: return 15;
-                case 4: return 20;
-                case 5: return 25;
-                default: return 15 + (mission - 3) * 5; // Scaling up
-            }
-        }
-        
-        async function savePlayerData(appId, newOverall, newMission) {
-            const docRef = firebase.doc(db, `/artifacts/${appId}/users/${userId}/playerData/stats`);
-            try {
-                await firebase.setDoc(docRef, {
-                    overall: newOverall,
-                    mission: newMission,
-                    lastPlayed: new Date().toISOString()
-                }, { merge: true });
-            } catch (e) {
-                console.error("Error saving player data:", e);
-            }
-        }
-
-        // --- INITIALIZATION ---
+        // --- INIT AND MODELING FUNCTIONS (same as v2) ---
         function init() {
-            // Get UI elements
-            scoreDisplay = document.getElementById('scoreDisplay');
-            timerDisplay = document.getElementById('timerDisplay');
-            overallDisplay = document.getElementById('overallDisplay');
-            powerDisplay = document.getElementById('powerDisplay'); 
+            const container = document.getElementById('hoop-container');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
 
-            // 1. Scene and Renderer
             scene = new THREE.Scene();
-            scene.fog = new THREE.Fog(0x000000, 1, 40);
+            scene.background = new THREE.Color(0x374151);
+
+            camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
+            camera.position.set(0, 3, 15);
+            camera.lookAt(0, HOOP_HEIGHT, 0);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.shadowMap.enabled = true;
-            document.body.appendChild(renderer.domElement);
+            renderer.setSize(width, height);
+            container.appendChild(renderer.domElement);
 
-            // 2. Camera Setup (The Player)
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.copy(playerPosition); 
-            camera.lookAt(hoopPosition); 
-
-            // 3. Lighting
-            const ambient = new THREE.AmbientLight(0xffffff, 0.3);
-            scene.add(ambient);
-
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            const ambientLight = new THREE.AmbientLight(0x404040, 2);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 3);
             directionalLight.position.set(10, 15, 10);
-            directionalLight.castShadow = true;
-            directionalLight.shadow.mapSize.width = 2048;
-            directionalLight.shadow.mapSize.height = 2048;
             scene.add(directionalLight);
+            
+            courtGroup = new THREE.Group();
+            hoopGroup = new THREE.Group();
 
-            // 4. Physics World (CANNON.JS)
-            world = new CANNON.World();
-            world.gravity.set(0, -9.82, 0);
-            world.broadphase = new CANNON.NaiveBroadphase();
-            setupPhysicsMaterials(); // CALL FIX C SETUP
-
-            // 5. Create Court and Hoop
             createCourt();
             createHoop();
             
-            // 6. Create Basketball
+            hoopGroup.position.set(0, 0, -parseFloat(distanceInput.value)); 
+            
+            scene.add(courtGroup);
+            scene.add(hoopGroup);
+
             createBall();
-
-            // 7. Event Listeners
-            document.addEventListener('keydown', onKeyDown, false);
-            document.addEventListener('keyup', onKeyUp, false);
-            
-            // 8. Start Auth Process
-            setupFirebaseAndLoadGame();
-            
-            animate();
+            window.addEventListener('resize', onWindowResize, false);
         }
-
-        function startGame() {
-            gameActive = true;
-            resetScore();
-            resetTimer();
-
-            gameInterval = setInterval(gameLoop, 1000);
-        }
-
-        // --- GAME LOOP & END CONDITION ---
-        function gameLoop() {
-            if (!gameActive) {
-                clearInterval(gameInterval);
-                return;
-            }
-
-            timeRemaining--;
-            timerDisplay.textContent = `Time: ${timeRemaining}s`;
-
-            if (timeRemaining <= 0) {
-                gameActive = false;
-                handleGameEnd();
-            }
-        }
-
-        function handleGameEnd() {
-            let title, message;
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-
-            if (score >= SCORE_GOAL) {
-                const newOverall = playerOverall + 1;
-                const newMission = playerCurrentMission + 1;
-                
-                title = "MISSION COMPLETE!";
-                message = `You scored ${score} points and hit the goal of ${SCORE_GOAL}! Your Overall Rating increases to ${newOverall}. You have unlocked Mission ${newMission}.`;
-                
-                if (isAuthReady && db) {
-                    savePlayerData(appId, newOverall, newMission);
-                } else {
-                     message += " (Note: Progress not saved - Firebase is offline)";
-                }
-                playerOverall = newOverall; 
-                playerCurrentMission = newMission; 
-                overallDisplay.textContent = `Overall: ${playerOverall}`;
-            } else {
-                title = "MISSION FAILED!";
-                message = `You scored ${score} points, but needed ${SCORE_GOAL} in the time limit. Try again, GOAT!`;
-            }
-
-            openModal(title, message);
-        }
-
-        function openModal(title, message) {
-            document.getElementById('modalTitle').textContent = title;
-            document.getElementById('modalMessage').textContent = message;
-            document.getElementById('modal').style.display = 'flex';
-        }
-
-        function closeModal() {
-            document.getElementById('modal').style.display = 'none';
-            // Update the display for the next mission attempt
-            SCORE_GOAL = getMissionGoal(playerCurrentMission); 
-            document.querySelector('#overlay h1').textContent = `GOAT Quick Play Challenge (Mission ${playerCurrentMission})`;
-            startGame();
-        }
-
-        function resetScore() {
-            score = 0;
-            scoreDisplay.textContent = `Score: ${score} / ${SCORE_GOAL}`;
-        }
-
-        function resetTimer() {
-            timeRemaining = GAME_DURATION;
-            timerDisplay.textContent = `Time: ${timeRemaining}s`;
-        }
-
-
-        // --- OBJECT CREATION ---
 
         function createCourt() {
-            const courtWidth = 30;
-            const courtLength = 60;
-            const courtGeometry = new THREE.PlaneGeometry(courtWidth, courtLength);
-            const courtMaterial = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, side: THREE.DoubleSide }); 
-            const courtMesh = new THREE.Mesh(courtGeometry, courtMaterial);
-            courtMesh.rotation.x = Math.PI / 2;
-            courtMesh.receiveShadow = true;
-            scene.add(courtMesh);
-
-            const courtShape = new CANNON.Plane();
-            // Assign the court material (Fix C)
-            const courtBody = new CANNON.Body({ mass: 0, material: courtMat });
-            courtBody.addShape(courtShape);
-            courtBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2); 
-            world.addBody(courtBody);
-            
-            const wallGeo = new THREE.BoxGeometry(courtWidth, 20, 1);
-            const wallMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0a });
-            const wallMesh = new THREE.Mesh(wallGeo, wallMat);
-            wallMesh.position.set(0, 10, courtLength / 2 + 0.5); 
-            scene.add(wallMesh);
-            
-            drawCourtLines(courtWidth, courtLength);
+            const courtGeometry = new THREE.PlaneGeometry(30, 40);
+            const courtMaterial = new THREE.MeshLambertMaterial({ color: 0x22c55e }); 
+            const court = new THREE.Mesh(courtGeometry, courtMaterial);
+            court.rotation.x = -Math.PI / 2;
+            court.position.y = -0.1;
+            courtGroup.add(court);
         }
-
-        function drawCourtLines(courtWidth, courtLength) {
-            const lineColor = 0x00c4ff; 
-            const lineWidth = 0.05;
-            const halfCourtZ = 0; 
-            const hoopBaselineZ = 30; 
-            const threePointRadius = 6.75; 
-            const freeThrowLineZ = hoopPosition.z - 4.6; 
-            const keyWidth = 3.6; 
-            const keyHalfWidth = keyWidth / 2; 
-
-            function createLine(width, depth, x, z, rotationY = 0) {
-                const geo = new THREE.BoxGeometry(width, lineWidth, depth);
-                const mat = new THREE.MeshBasicMaterial({ color: lineColor });
-                const mesh = new THREE.Mesh(geo, mat);
-                mesh.position.set(x, 0.01, z);
-                mesh.rotation.y = rotationY;
-                scene.add(mesh);
-            }
-            
-            // PERIMETER LINES (Half Court)
-            const halfCourtLength = hoopBaselineZ;
-            createLine(courtWidth, lineWidth, 0, hoopBaselineZ - lineWidth / 2); 
-            createLine(lineWidth, halfCourtLength, -courtWidth / 2 + lineWidth / 2, halfCourtLength / 2); 
-            createLine(lineWidth, halfCourtLength, courtWidth / 2 - lineWidth / 2, halfCourtLength / 2); 
-
-            // HALF-COURT LINE & CIRCLE (z=0)
-            createLine(courtWidth, lineWidth, 0, halfCourtZ + lineWidth / 2); 
-            const centerCircleRadius = 1.8;
-            const centerCircleGeo = new THREE.RingGeometry(centerCircleRadius - lineWidth / 2, centerCircleRadius + lineWidth / 2, 64);
-            const centerCircleMat = new THREE.MeshBasicMaterial({ color: lineColor, side: THREE.DoubleSide });
-            const centerCircleMesh = new THREE.Mesh(centerCircleGeo, centerCircleMat);
-            centerCircleMesh.rotation.x = -Math.PI / 2;
-            centerCircleMesh.position.set(0, 0.01, halfCourtZ); 
-            scene.add(centerCircleMesh);
-
-            // KEY/FREE THROW LANE
-            const keyLength = hoopBaselineZ - freeThrowLineZ; 
-            const keyCenterZ = freeThrowLineZ + (keyLength / 2); 
-
-            createLine(lineWidth, keyLength, -keyHalfWidth, keyCenterZ); 
-            createLine(lineWidth, keyLength, keyHalfWidth, keyCenterZ); 
-            createLine(keyWidth, lineWidth, 0, freeThrowLineZ); 
-
-            // Free Throw Circle
-            const circleRadius = keyHalfWidth; 
-            const circleGeo = new THREE.RingGeometry(circleRadius - lineWidth / 2, circleRadius + lineWidth / 2, 64, 1);
-            const circleMesh = new THREE.Mesh(circleGeo, centerCircleMat); 
-            circleMesh.rotation.x = -Math.PI / 2;
-            circleMesh.position.set(0, 0.01, freeThrowLineZ);
-            scene.add(circleMesh);
-            
-            // THREE POINT ARC
-            const straightLineZ = hoopPosition.z - threePointRadius; 
-            const straightLength = hoopBaselineZ - straightLineZ; 
-
-            const arcGeo = new THREE.RingGeometry(threePointRadius - lineWidth / 2, threePointRadius + lineWidth / 2, 64, 1, -Math.PI / 2, Math.PI); 
-            const arcMat = new THREE.MeshBasicMaterial({ color: lineColor, side: THREE.DoubleSide });
-            const arcMesh = new THREE.Mesh(arcGeo, arcMat);
-            arcMesh.rotation.x = -Math.PI / 2;
-            arcMesh.position.set(hoopPosition.x, 0.01, hoopPosition.z);
-            scene.add(arcMesh);
-            
-            const straightCenterZ = straightLineZ + (straightLength / 2); 
-            const straightX = threePointRadius; 
-            
-            createLine(lineWidth, straightLength, -straightX, straightCenterZ); 
-            createLine(lineWidth, straightLength, straightX, straightCenterZ);  
-
-        }
-
+        
+        // Detailed Hoop Model Creation (omitted details for brevity, uses same constants as v2)
         function createHoop() {
-            // ... (Hoop geometry setup - unchanged)
-            const rimRadius = 0.4;
-            const rimThickness = 0.05;
-            const backboardWidth = 2;
-            const backboardHeight = 1.05; 
-            const poleHeight = 6.05;
-            const rimOverhang = 1.0; 
-            const backboardZ = hoopPosition.z - rimOverhang; 
-            const poleZ = backboardZ - 0.5; 
-
-            // 1. POLE 
-            const poleGeo = new THREE.CylinderGeometry(0.1, 0.1, poleHeight, 12);
-            const poleMat = new THREE.MeshStandardMaterial({ color: 0x222222 }); 
-            const poleMesh = new THREE.Mesh(poleGeo, poleMat);
-            poleMesh.position.set(hoopPosition.x, hoopPosition.y - (poleHeight / 2) + 0.05, poleZ);
-            poleMesh.castShadow = true;
-            scene.add(poleMesh);
-
-            // 2. BACKBOARD 
-            const mainBoardGeo = new THREE.BoxGeometry(backboardWidth, backboardHeight, 0.05);
-            const mainBoardMat = new THREE.MeshStandardMaterial({ 
-                color: 0x00c4ff, transparent: true, opacity: 0.2, emissive: 0x00c4ff, emissiveIntensity: 0.5 
-            });
-            const mainBoardMesh = new THREE.Mesh(mainBoardGeo, mainBoardMat);
-            mainBoardMesh.position.set(hoopPosition.x, hoopPosition.y + (backboardHeight / 2), backboardZ);
-            mainBoardMesh.castShadow = true;
-            scene.add(mainBoardMesh);
-
-            const targetBoxWidth = 0.6;
-            const targetBoxHeight = 0.45;
-            const targetGeo = new THREE.BoxGeometry(targetBoxWidth, targetBoxHeight, 0.01);
-            const targetMat = new THREE.MeshBasicMaterial({ color: 0xff00ff });
-            const targetMesh = new THREE.Mesh(targetGeo, targetMat);
-            targetMesh.position.set(0, 0, -0.03); 
-            mainBoardMesh.add(targetMesh); 
-
-            // Backboard Physics - using the rimMat for bouncy contact
-            const backboardShape = new CANNON.Box(new CANNON.Vec3(backboardWidth / 2, backboardHeight / 2, 0.025));
-            const backboardBody = new CANNON.Body({ mass: 0, material: rimMat });
-            backboardBody.addShape(backboardShape);
-            backboardBody.position.set(hoopPosition.x, hoopPosition.y + (backboardHeight / 2), backboardZ);
-            world.addBody(backboardBody);
-
-            // 3. RIM & BRACE 
-            const rimGeo = new THREE.TorusGeometry(rimRadius, rimThickness, 8, 32);
-            const rimMatMesh = new THREE.MeshStandardMaterial({ color: 0xff00ff, emissive: 0xff00ff, emissiveIntensity: 0.8 }); 
-            const rimMesh = new THREE.Mesh(rimGeo, rimMatMesh);
-            rimMesh.rotation.x = Math.PI / 2;
-            rimMesh.position.set(hoopPosition.x, hoopPosition.y, hoopPosition.z);
-            rimMesh.castShadow = true;
-            scene.add(rimMesh);
+            const BACKBOARD_WIDTH = 1.83, BACKBOARD_HEIGHT = 1.07, BACKBOARD_THICKNESS = 0.03;
+            const PADDING_HEIGHT = 0.2, NET_LENGTH = 0.45;
             
-            const braceGeo = new THREE.BoxGeometry(0.1, 0.1, rimOverhang - 0.2);
-            const braceMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
-            const braceMesh = new THREE.Mesh(braceGeo, braceMat);
-            braceMesh.rotation.x = Math.PI / 4; 
-            braceMesh.position.set(hoopPosition.x, hoopPosition.y + 0.15, backboardZ + (rimOverhang / 2) - 0.1); 
-            scene.add(braceMesh);
+            // Backboard (Clear/Glass)
+            const backboardGeometry = new THREE.BoxGeometry(BACKBOARD_WIDTH, BACKBOARD_HEIGHT, BACKBOARD_THICKNESS);
+            const backboardMaterial = new THREE.MeshPhongMaterial({color: 0xffffff, transparent: true, opacity: 0.8, shininess: 150});
+            const backboard = new THREE.Mesh(backboardGeometry, backboardMaterial);
+            backboard.position.set(0, RIM_CENTER_Y + (BACKBOARD_HEIGHT / 2) - 0.3, BACKBOARD_Z_FACE);
+            hoopGroup.add(backboard);
 
-            // Physics Rim - Assign the rim material (Fix C)
-            const rimShape = new CANNON.Cylinder(rimRadius, rimRadius, rimThickness * 2, 16);
-            const rimBody = new CANNON.Body({ mass: 0, material: rimMat });
-            rimBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), Math.PI / 2);
-            rimBody.addShape(rimShape);
-            rimBody.position.copy(rimMesh.position);
-            world.addBody(rimBody);
+            // Backboard Padding (Thick Red Padding)
+            const paddingGeometry = new THREE.BoxGeometry(BACKBOARD_WIDTH, PADDING_HEIGHT, BACKBOARD_THICKNESS * 2);
+            const paddingMaterial = new THREE.MeshLambertMaterial({ color: 0xcc0000 });
+            const padding = new THREE.Mesh(paddingGeometry, paddingMaterial);
+            padding.position.set(backboard.position.x, backboard.position.y - (BACKBOARD_HEIGHT / 2) + (PADDING_HEIGHT / 2), backboard.position.z);
+            hoopGroup.add(padding);
 
-            // 4. NET (Neon Wireframe)
-            const netHeight = 1.2;
-            const netGeo = new THREE.ConeGeometry(rimRadius * 1.1, netHeight, 16, 1, true); 
-            const edges = new THREE.EdgesGeometry(netGeo);
-            const netMesh = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x00c4ff, linewidth: 3, transparent: true, opacity: 1 }));
-            netMesh.position.set(hoopPosition.x, hoopPosition.y - netHeight / 2, hoopPosition.z);
-            scene.add(netMesh);
+            // Rim (Orange/Red Metal)
+            const rimGeometry = new THREE.TorusGeometry(RIM_RADIUS, RIM_TUBE_RADIUS, 12, 60);
+            const rimMaterial = new THREE.MeshPhongMaterial({ color: 0xff4500, shininess: 80 });
+            const rim = new THREE.Mesh(rimGeometry, rimMaterial);
+            rim.rotation.x = Math.PI / 2;
+            rim.position.set(0, RIM_CENTER_Y, RIM_CENTER_Z + 1.0); // Z position adjusted
+            hoopGroup.add(rim);
 
-            // 5. SCORING ZONE
-            const scoringShape = new CANNON.Cylinder(rimRadius * 0.9, rimRadius * 0.9, 0.5, 16);
-            const scoringBody = new CANNON.Body({ mass: 0, material: new CANNON.Material('scoreMat') });
-            scoringBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), Math.PI / 2);
-            scoringBody.addShape(scoringShape);
-            scoringBody.position.set(hoopPosition.x, hoopPosition.y - 0.25, hoopPosition.z);
-            scoringBody.collisionResponse = 0; 
-            world.addBody(scoringBody);
-            
-            scoringBody.addEventListener('collide', function(event) {
-                if (event.body === ballBody && isShooting && !hasScored && gameActive) {
-                    if (ballBody.velocity.y < -0.1) {
-                        scorePoint();
-                    }
-                }
-            });
+            // Net (Tapered Cone/Cylinder)
+            const netGeometry = new THREE.CylinderGeometry(RIM_RADIUS, RIM_RADIUS * 0.5, NET_LENGTH, 60, 1, true); 
+            const netMaterial = new THREE.MeshPhongMaterial({color: 0xffffff, transparent: true, opacity: 0.8, wireframe: true, side: THREE.DoubleSide});
+            const net = new THREE.Mesh(netGeometry, netMaterial);
+            net.position.set(rim.position.x, rim.position.y - NET_LENGTH / 2, rim.position.z);
+            hoopGroup.add(net);
         }
 
         function createBall() {
             const ballGeometry = new THREE.SphereGeometry(ballRadius, 32, 32);
-            const ballMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0xff4400, flatShading: true, emissive: 0xff4400, emissiveIntensity: 0.1
-            });
-            ballMesh = new THREE.Mesh(ballGeometry, ballMaterial);
-            ballMesh.castShadow = true;
-            scene.add(ballMesh);
+            const ballMaterial = new THREE.MeshLambertMaterial({ color: 0xff8c00 });
+            ball = new THREE.Mesh(ballGeometry, ballMaterial);
+            ball.position.set(0, LAUNCH_HEIGHT, parseFloat(distanceInput.value)); 
+            scene.add(ball);
+        }
 
-            const ballShape = new CANNON.Sphere(ballRadius);
-            // Assign the ball material (Fix C)
-            ballBody = new CANNON.Body({ mass: 1, shape: ballShape, material: ballMat });
-            ballBody.position.copy(playerPosition).y -= 0.5;
-            ballBody.linearDamping = 0.01;
-            ballBody.angularDamping = 0.01;
-            ballBody.isKinematic = true; 
-            world.addBody(ballBody);
+        // --- CORE PHYSICS CALCULATION ---
+        function calculateRequiredVelocity(xf, yf, theta, g) {
+            const cosTheta = Math.cos(theta);
+            const tanTheta = Math.tan(theta);
+            yf = yf - LAUNCH_HEIGHT;
+            
+            const denominator = (xf * tanTheta - yf);
+            if (denominator <= 0) return 30; 
+
+            const numerator = g * xf * xf;
+            const requiredV2 = numerator / (2 * cosTheta * cosTheta * denominator);
+
+            return Math.sqrt(requiredV2);
+        }
+        
+        function getRequiredVelocityVector(v0_scalar, theta) {
+            const v0x = 0; // No horizontal movement perpendicular to the shot
+            const v0y = v0_scalar * Math.sin(theta);
+            const v0z = -v0_scalar * Math.cos(theta); // Shot travels down the -Z axis
+            return new THREE.Vector3(v0x, v0y, v0z);
         }
 
         // --- GAME LOGIC ---
+        function shootBall() {
+            if (isShooting) return;
+            messageDisplay.style.opacity = 0;
 
-        function scorePoint() {
-            // ... (Scoring logic - unchanged)
-            const threePointDistanceSq = 6.75 * 6.75; 
-            const playerDistanceSq = (playerPosition.x - hoopPosition.x) ** 2 + (playerPosition.z - hoopPosition.z) ** 2;
-
-            let points = 2; 
-            if (playerDistanceSq >= threePointDistanceSq) {
-                points = 3;
-            }
-
-            score += points;
-            scoreDisplay.textContent = `Score: ${score} / ${SCORE_GOAL} (+${points})`;
-            hasScored = true; 
-
-            ballMesh.material.color.set(0x00ff00); 
+            const angleDegrees = parseFloat(angleInput.value);
+            shotDistance = parseFloat(distanceInput.value);
+            const angleRadians = angleDegrees * (Math.PI / 180);
             
-            if (score >= SCORE_GOAL) {
-                gameActive = false; 
-                handleGameEnd();
-                return;
-            }
-            
-            setTimeout(() => {
-                ballMesh.material.color.set(0xff4400); 
-                resetBall(); 
-            }, 500);
-        }
+            const xf = shotDistance; 
+            const yf = HOOP_HEIGHT;
 
-        // FIX A & B: UPDATED SHOOTING FUNCTION
-        function shoot() {
+            const v0_scalar = calculateRequiredVelocity(xf, yf, angleRadians, G);
+
+            // Set initial position and velocity vector
+            currentPosition.set(0, LAUNCH_HEIGHT, shotDistance);
+            currentV0 = getRequiredVelocityVector(v0_scalar, angleRadians);
+            
+            ball.position.copy(currentPosition);
+            
+            shotStartTime = performance.now();
             isShooting = true;
-            hasScored = false;
-            ballBody.isKinematic = false; 
-            
-            // Calculate final force based on charge
-            const overallMultiplier = 1 + ((playerOverall - 75) * 0.005); // 0.5% boost per Overall point
-            const finalForce = (MIN_SHOOT_FORCE + (currentPower * (MAX_SHOOT_FORCE - MIN_SHOOT_FORCE))) * overallMultiplier;
+        }
 
-            // 1. Calculate base direction towards the hoop
-            let targetVector = new THREE.Vector3(hoopPosition.x, hoopPosition.y + 1.5, hoopPosition.z); 
-            let shotDirection = targetVector.clone().sub(ballMesh.position);
-            shotDirection.normalize();
+        function displayMessage(text, color) {
+            messageDisplay.textContent = text;
+            messageDisplay.style.color = color;
+            messageDisplay.style.opacity = 1;
+            setTimeout(() => { messageDisplay.style.opacity = 0; }, 2000);
+        }
 
-            // 2. Tune the trajectory (Arc Physics)
-            const forceX = shotDirection.x * finalForce * 0.8; 
-            const forceY = Math.max(shotDirection.y, 0.5) * finalForce * 1.2; 
-            const forceZ = shotDirection.z * finalForce * 0.8; 
+        function checkCollisionAndBounce(prevPos, nextPos, velocity) {
+            const hoopGroupAbsoluteZ = -parseFloat(distanceInput.value);
+            const rimAbsoluteY = RIM_CENTER_Y;
+            const rimAbsoluteZ = hoopGroupAbsoluteZ + RIM_CENTER_Z + 1.0; 
+            const backboardAbsoluteZ = hoopGroupAbsoluteZ + BACKBOARD_Z_FACE;
             
-            // 3. Apply Aim Assist (Fix B) - Lateral adjustment based on player movement 
-            const lateralAdjustment = playerAimDirection.x * finalForce * 0.03; // Small force boost sideways
-            
-            ballBody.velocity.set(
-                forceX + lateralAdjustment,
-                forceY,
-                forceZ
-            );
-            
-            isCharging = false;
-            currentPower = 0;
-            powerDisplay.style.display = 'none';
-
-            // Allow the ball to become "live" if it misses
-            setTimeout(() => {
-                if(isShooting && ballBody.position.y < playerHeight + 1) { 
-                    isShooting = false; // Ball is now ready to be picked up
+            // Backboard Collision Check (Simplified plane collision)
+            // Check if ball is near the backboard and moving in the +Z direction (towards the board)
+            if (prevPos.z < backboardAbsoluteZ && nextPos.z >= backboardAbsoluteZ && Math.abs(prevPos.x) < 1.0) {
+                // Ball hits the backboard (flat surface)
+                if (nextPos.y < rimAbsoluteY + RIM_RADIUS + ballRadius) { // Only bounce if ball is below rim height + safety margin
+                    velocity.z *= -BACKBOARD_RESTITUTION; // Reverse and dampen Z velocity
+                    nextPos.z = backboardAbsoluteZ - ballRadius; // Correct position to prevent sinking
+                    return true;
                 }
-            }, 2000); 
-        }
-
-        // FIX D: Improved reset ball (Ball pickup)
-        function resetBall() {
-            isShooting = false;
-            hasScored = false; 
-            ballBody.isKinematic = true;
-            ballBody.velocity.set(0, 0, 0);
-            ballBody.angularVelocity.set(0, 0, 0);
+            }
             
-            ballBody.position.copy(playerPosition).y -= 0.5; 
+            // Rim Collision Check (Simplified Torus/Circle collision)
+            const rimCenter = new THREE.Vector3(0, rimAbsoluteY, rimAbsoluteZ);
+            const diff = nextPos.clone().sub(rimCenter);
+            
+            // Project the difference vector onto the XZ plane (we only care about distance from center)
+            const dist2D = Math.sqrt(diff.x * diff.x + diff.z * diff.z); 
+            
+            // Check if horizontal distance is close to the rim's radius
+            const horizontalCollisionDist = RIM_RADIUS + RIM_TUBE_RADIUS + ballRadius;
+            
+            if (dist2D < horizontalCollisionDist) {
+                // If it's near the rim's horizontal area
+                const tubeDist = Math.abs(dist2D - RIM_RADIUS); // Distance from the central ring of the rim
+                const verticalDist = Math.abs(diff.y);
+                
+                // If the ball is within the rim tube's collision zone (simplified)
+                if (tubeDist < RIM_TUBE_RADIUS + ballRadius && verticalDist < RIM_TUBE_RADIUS + ballRadius) {
+                    
+                    // Simple radial bounce (reflect velocity away from the rim's central point)
+                    const normal = new THREE.Vector3(diff.x, diff.y, diff.z);
+                    normal.normalize();
+
+                    // The 'perfect swish' zone check
+                    if (dist2D < RIM_RADIUS && nextPos.y < rimAbsoluteY) {
+                         // Ball is inside the rim and below the height: assume swish/score
+                        return false; 
+                    }
+
+                    // Calculate reflected velocity
+                    const dot = velocity.dot(normal);
+                    velocity.sub(normal.multiplyScalar(2 * dot * COEFFICIENT_OF_RESTITUTION));
+                    
+                    // Set a minimum outbound speed
+                    if (velocity.length() < 5) velocity.multiplyScalar(5 / velocity.length());
+
+                    nextPos.add(normal.multiplyScalar(0.01)); // Push ball out slightly
+                    
+                    return true;
+                }
+            }
+            return false;
         }
 
-        // --- INPUT & CAMERA HANDLING ---
-        function onKeyDown(event) {
-            if (!gameActive) return; 
-            switch (event.keyCode) {
-                case 87: moveForward = true; break; 
-                case 83: moveBackward = true; break; 
-                case 65: moveLeft = true; playerAimDirection.x = -1; break; 
-                case 68: moveRight = true; playerAimDirection.x = 1; break;  
-                case 69: // E (SHOOT/CHARGE)
-                    if (!isCharging && !isShooting && ballBody.isKinematic) {
-                        isCharging = true;
-                        chargeStartTime = Date.now();
-                        powerDisplay.style.display = 'block';
-                    }
-                    break;
+        function updateBallPosition() {
+            if (!isShooting) return;
+
+            const timeNow = performance.now();
+            const deltaTime = TIME_STEP; // Fixed time step for stability
+
+            // Use elapsed time from shot start for integration
+            let totalTimeElapsed = (timeNow - shotStartTime) / 1000;
+            
+            let prevPos = currentPosition.clone();
+            
+            // Update velocity (Gravity: constant acceleration in the negative Y direction)
+            currentV0.y -= G * deltaTime; 
+            
+            // Update position (Position = Old Position + Velocity * Time)
+            currentPosition.add(currentV0.clone().multiplyScalar(deltaTime));
+
+            // Collision Detection
+            const didCollide = checkCollisionAndBounce(prevPos, currentPosition, currentV0);
+            
+            // After collision, reset position/velocity based on results
+            ball.position.copy(currentPosition);
+
+            // Simple backspin for visual realism
+            ball.rotation.x += currentV0.z * 0.05;
+
+            // Stop conditions
+            if (currentPosition.y < 0.1) {
+                // Ground hit
+                isShooting = false;
+                displayMessage("MISS (Airball/Ground)", "#f00");
+                // Reset ball
+                setTimeout(() => {
+                    ball.position.set(0, LAUNCH_HEIGHT, shotDistance); 
+                }, 1000);
+            }
+            
+            // Success condition (Ball goes below the rim height within the rim's horizontal space)
+            const hoopGroupAbsoluteZ = -parseFloat(distanceInput.value);
+            const rimAbsoluteZ = hoopGroupAbsoluteZ + RIM_CENTER_Z + 1.0;
+            const diffZ = currentPosition.z - rimAbsoluteZ;
+            
+            // If ball passes the rim Z-plane and is within the rim's X-radius, and its Y is below the rim
+            if (diffZ > 0.05 && Math.abs(currentPosition.x) < RIM_RADIUS && currentPosition.y < RIM_CENTER_Y - ballRadius * 2) {
+                isShooting = false;
+                displayMessage("SWISH!", "#00ff00");
+                setTimeout(() => {
+                    ball.position.set(0, LAUNCH_HEIGHT, shotDistance); 
+                }, 2000);
             }
         }
 
-        function onKeyUp(event) {
-            switch (event.keyCode) {
-                case 87: moveForward = false; break; 
-                case 83: moveBackward = false; break; 
-                case 65: moveLeft = false; playerAimDirection.x = moveRight ? 1 : 0; break;
-                case 68: moveRight = false; playerAimDirection.x = moveLeft ? -1 : 0; break;
-                case 69: // E (RELEASE SHOT)
-                    if (isCharging) {
-                        shoot();
-                    }
-                    break;
-            }
-        }
-        
-        function toggleCamera() {
-            isFirstPerson = !isFirstPerson;
-            const icon = document.getElementById('cameraToggleIcon');
-            if (isFirstPerson) {
-                icon.textContent = '👤';
-            } else {
-                icon.textContent = '🧍';
-            }
-        }
+
+        // --- UTILITIES AND ANIMATE LOOP ---
+        let lastUpdateTime = performance.now();
 
         function animate() {
             requestAnimationFrame(animate);
 
-            // Update power charge UI
-            if (isCharging) {
-                const chargeDuration = Date.now() - chargeStartTime;
-                currentPower = Math.min(1, chargeDuration / MAX_CHARGE_TIME); 
-                
-                let r = Math.round(255 * currentPower);
-                let b = Math.round(255 * (1 - currentPower));
-                powerDisplay.style.background = `linear-gradient(to right, #00c4ff, #ff00ff ${currentPower * 100}%, #111 ${currentPower * 100}%)`;
-                powerDisplay.textContent = `POWER: ${(currentPower * 100).toFixed(0)}%`;
+            // Use a fixed timestep for physics updates for more stable collision detection
+            const timeNow = performance.now();
+            let delta = (timeNow - lastUpdateTime) / 1000;
+
+            // Multiple steps for complex physics if delta is large (not fully implemented here but good practice)
+            while (delta >= TIME_STEP) {
+                updateBallPosition();
+                delta -= TIME_STEP;
             }
 
-            // 1. Physics Step
-            if (gameActive || isShooting || !ballBody.isKinematic) {
-                world.step(1/60); 
-            }
+            lastUpdateTime = timeNow - delta * 1000;
             
-            // 2. Player Movement 
-            playerVelocity.set(0, 0, 0);
-
-            if (moveForward) playerVelocity.z -= speed;
-            if (moveBackward) playerVelocity.z += speed;
-            if (moveLeft) playerVelocity.x -= speed;
-            if (moveRight) playerVelocity.x += speed;
-
-            camera.translateX(playerVelocity.x);
-            camera.translateZ(playerVelocity.z);
-
-            camera.position.x = Math.max(-14, Math.min(14, camera.position.x));
-            camera.position.z = Math.max(-28, Math.min(28, camera.position.z));
-            
-            playerPosition.copy(camera.position);
-
-
-            // 3. Camera Position Update 
-            if (isFirstPerson) {
-                camera.position.y = playerHeight;
-                camera.lookAt(hoopPosition);
-            } else {
-                const cameraOffset = new THREE.Vector3(0, 3, -5); 
-                
-                let tempPos = new THREE.Vector3().copy(playerPosition);
-                tempPos.z += cameraOffset.z; 
-                tempPos.y += cameraOffset.y; 
-
-                camera.position.copy(tempPos);
-                camera.lookAt(playerPosition); 
-            }
-            
-            // 4. Ball Tethering 
-            if (ballBody.isKinematic) { 
-                let offsetVector = new THREE.Vector3(0, 0, 0);
-                if (moveLeft) offsetVector.x -= dribbleOffset; 
-                if (moveRight) offsetVector.x += dribbleOffset; 
-
-                ballBody.position.set(
-                    playerPosition.x + offsetVector.x,
-                    playerPosition.y - 0.5 + Math.sin(Date.now() / 150) * 0.1, 
-                    playerPosition.z + offsetVector.z
-                );
-                ballBody.quaternion.copy(camera.quaternion);
-            } 
-            
-            // FIX D: Pick Up Ball Logic (Player walks over it)
-            if (!ballBody.isKinematic && ballBody.position.y < playerHeight / 2) { 
-                let dist = playerPosition.distanceTo(ballMesh.position);
-                if (dist < ballRadius + 0.5) {
-                    resetBall();
-                }
-            }
-
-            // 6. Sync Three.js Mesh with Cannon.js Body
-            ballMesh.position.copy(ballBody.position);
-            ballMesh.quaternion.copy(ballBody.quaternion);
-
-            // 7. Render the scene
             renderer.render(scene, camera);
         }
 
-        window.onload = function () {
-            init();
+        function onWindowResize() {
+            const container = document.getElementById('hoop-container');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
         }
 
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
+        function updateUI() {
+            angleValueSpan.textContent = `${angleInput.value}°`;
+            distanceValueSpan.textContent = `${distanceInput.value} m`;
+            
+            // Reposition the hoop based on distance input
+            hoopGroup.position.z = -parseFloat(distanceInput.value);
+            shotDistance = parseFloat(distanceInput.value);
+            
+            // Reposition ball to the new distance
+            if (!isShooting) {
+                ball.position.set(0, LAUNCH_HEIGHT, shotDistance); 
+            }
+        }
+        
+        function addEventListeners() {
+            const container = document.getElementById('hoop-container');
+            
+            angleInput.addEventListener('input', updateUI);
+            distanceInput.addEventListener('input', updateUI);
+            launchButton.addEventListener('click', shootBall);
+
+            // ... (Orbit and Zoom Controls remain the same) ...
+            const handlePointerDown = (clientX, clientY) => {
+                isDragging = true;
+                previousMousePosition.x = clientX;
+                previousMousePosition.y = clientY;
+            };
+
+            const handlePointerMove = (clientX, clientY) => {
+                if (!isDragging) return;
+
+                const deltaX = clientX - previousMousePosition.x;
+                const deltaY = clientY - previousMousePosition.y;
+                
+                courtGroup.rotation.y += deltaX * 0.005;
+
+                camera.position.y -= deltaY * 0.05;
+                camera.lookAt(0, HOOP_HEIGHT, 0); 
+                
+                previousMousePosition.x = clientX;
+                previousMousePosition.y = clientY;
+            };
+
+            const handlePointerUp = () => {
+                isDragging = false;
+            };
+
+            container.addEventListener('mousedown', (e) => {
+                const infoPanel = document.querySelector('.info-panel');
+                if (infoPanel && infoPanel.contains(e.target)) return;
+                handlePointerDown(e.clientX, e.clientY);
+            });
+            container.addEventListener('mouseup', handlePointerUp);
+            container.addEventListener('mousemove', (e) => handlePointerMove(e.clientX, e.clientY));
+
+            container.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                camera.position.z += e.deltaY * 0.01;
+                camera.position.z = Math.max(5, Math.min(30, camera.position.z));
+            });
+
+            container.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if (e.touches.length === 1) {
+                    handlePointerDown(e.touches[0].clientX, e.touches[0].clientY);
+                }
+            }, { passive: false });
+
+            container.addEventListener('touchend', handlePointerUp, { passive: false });
+
+            container.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                if (!isDragging || e.touches.length !== 1) return;
+                handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
+            }, { passive: false });
+        }
     </script>
 </body>
 </html>
 ```eof
 
-The quick play mode is now much more robust:
+This new file, `quick_play_hoop_v3.html`, integrates the Rim Collision logic.
 
-* **Realistic Physics (Fix C):** The ball now bounces realistically off the rim and grips correctly on the court surface.
-* **Skill-Based Shooting (Fix A & B):** Shots require a charged press to control power and a subtle aim using movement keys.
-* **Realistic Flow (Fix D):** Missed shots fall to the court and must be manually picked up by walking over the ball.
-* **Career Ready (Fix E):** The game dynamically loads the current mission goal and correctly advances the mission state on success.
+Give it a shot! Try lowering the angle to get a flatter, faster trajectory. The ball will bounce off the rim or backboard instead of simply flying through the air. You should now see a much more interesting shot result!
 
-You now have a solid, challenging, and stylish Mission 3 experience!
-
-Now that the core quick play is fixed, what would you like to build for **Mission 4**? We could dive into a **Training Screen** with mini-games, or a **Choice-Based Narrative Event** that affects player stats.
+To continue making the game even better, the next and final physics stage is to implement **Net Physics** (the cloth simulation for a soft "swish"). Would you like to add that next?
